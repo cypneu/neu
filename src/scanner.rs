@@ -33,9 +33,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 }
                 '/' => {
                     if self.matches('/') {
-                        while self.peek().map_or(false, |&c| c != '\n') {
-                            self.advance();
-                        }
+                        self.consume_while(|c| c != '\n');
                     } else {
                         self.add_token(ch)
                     }
@@ -54,16 +52,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn scan_string(&mut self) {
-        let mut value = String::new();
-        while let Some(&c) = self.peek() {
-            if c == '"' {
-                break;
-            } else if c == '\n' {
-                self.line += 1;
-            }
-            value.push(c);
-            self.advance();
-        }
+        let value = self.consume_while(|c| c != '"');
 
         if self.advance().is_none() {
             self.neu.error(self.line, "Unterminated string.".into());
@@ -73,24 +62,11 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn scan_number(&mut self, mut num_str: String) {
-        while let Some(c) = self.peek() {
-            if !c.is_ascii_digit() {
-                break;
-            }
-            num_str.push(*c);
-            self.advance();
-        }
+        num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
 
         if self.peek() == Some(&'.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
-            num_str.push('.');
-            self.advance();
-            while let Some(c) = self.peek() {
-                if !c.is_ascii_digit() {
-                    break;
-                }
-                num_str.push(*c);
-                self.advance();
-            }
+            num_str.push(self.advance().unwrap());
+            num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
         }
 
         let num = num_str.parse::<f64>().unwrap();
@@ -98,11 +74,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn scan_identifier(&mut self, mut identifier: String) {
-        while self.peek().map_or(false, |c| c.is_alphanumeric()) {
-            identifier.push(*self.peek().unwrap());
-            self.advance();
-        }
-
+        identifier.push_str(self.consume_while(|c| c.is_alphanumeric()).as_str());
         self.add_token(identifier)
     }
 
@@ -131,5 +103,20 @@ impl<'a, 'b> Scanner<'a, 'b> {
             self.advance();
             true
         }
+    }
+
+    fn consume_while<F>(&mut self, predicate: F) -> String
+    where
+        F: Fn(char) -> bool,
+    {
+        let mut buf = String::new();
+        while self.peek().map_or(false, |&c| predicate(c)) {
+            let ch = self.advance().unwrap();
+            if ch == '\n' {
+                self.line += 1;
+            }
+            buf.push(ch);
+        }
+        buf
     }
 }
