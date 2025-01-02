@@ -1,14 +1,19 @@
+mod scanner;
+mod token;
+
+use scanner::Scanner;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 
+#[derive(Debug)]
 struct Neu {
     had_error: bool,
 }
 
 impl Neu {
     fn new() -> Self {
-        Self { had_error: false }
+        Neu { had_error: false }
     }
 
     pub fn main(args: Vec<String>) {
@@ -24,7 +29,7 @@ impl Neu {
         }
     }
 
-    fn run_file(&self, path: &String) {
+    fn run_file(&mut self, path: &String) {
         let contents = fs::read_to_string(path).unwrap();
         self.run(contents);
         if self.had_error {
@@ -49,9 +54,8 @@ impl Neu {
         }
     }
 
-    fn run(&self, source: String) {
-        println!("{}", &source);
-        let scanner = Scanner::new(source);
+    fn run(&mut self, source: String) {
+        let mut scanner = Scanner::new(&source, self);
         let tokens = scanner.scan_tokens();
 
         for token in tokens {
@@ -64,29 +68,9 @@ impl Neu {
     }
 
     fn report(&mut self, line: usize, place: String, message: String) {
-        eprintln!("[line {}] Error{} : {}", line, place, message);
+        eprintln!("[line {}] Error{}: {}", line, place, message);
         self.had_error = true;
     }
-}
-
-#[derive(Debug)]
-struct Scanner {
-    source: String,
-}
-
-impl Scanner {
-    fn new(source: String) -> Self {
-        Self { source }
-    }
-
-    fn scan_tokens(&self) -> Vec<Token> {
-        Vec::new()
-    }
-}
-
-#[derive(Debug)]
-struct Token {
-    content: String,
 }
 
 fn main() {
