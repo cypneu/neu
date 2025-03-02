@@ -29,7 +29,7 @@ pub enum TokenType {
     Fn,
     For,
     If,
-    Nil,
+    None,
     Or,
     Return,
     Super,
@@ -45,7 +45,7 @@ pub enum TokenType {
 }
 
 #[derive(Debug)]
-pub enum Literal {
+pub enum LiteralValue {
     None,
     String(String),
     Number(f64),
@@ -54,17 +54,17 @@ pub enum Literal {
 #[derive(Debug)]
 pub struct Token {
     kind: TokenType,
-    lexeme: String,
-    literal: Literal,
+    pub lexeme: String,
+    literal_value: LiteralValue,
     line: usize,
 }
 
 impl Token {
-    pub fn new(lexeme: String, literal: Literal, line: usize) -> Self {
+    pub fn new(lexeme: String, literal_value: LiteralValue, line: usize) -> Self {
         Token {
             kind: lexeme.as_str().into(),
             lexeme,
-            literal,
+            literal_value,
             line,
         }
     }
@@ -100,7 +100,7 @@ impl From<&str> for TokenType {
             "fn" => TokenType::Fn,
             "for" => TokenType::For,
             "if" => TokenType::If,
-            "nil" => TokenType::Nil,
+            "none" => TokenType::None,
             "or" => TokenType::Or,
             "return" => TokenType::Return,
             "super" => TokenType::Super,

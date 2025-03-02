@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::token::{Literal, Token};
+use crate::token::{LiteralValue, Token};
 use crate::Neu;
 
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         if self.advance().is_none() {
             self.neu.error(self.line, "Unterminated string.".into());
         } else {
-            self.add_token_literal(format!("\"{}\"", value), Literal::String(value));
+            self.add_token_literal(format!("\"{}\"", value), LiteralValue::String(value));
         }
     }
 
@@ -70,7 +70,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
 
         let num = num_str.parse::<f64>().unwrap();
-        self.add_token_literal(num_str, Literal::Number(num));
+        self.add_token_literal(num_str, LiteralValue::Number(num));
     }
 
     fn scan_identifier(&mut self, mut identifier: String) {
@@ -79,10 +79,10 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn add_token(&mut self, lexeme: String) {
-        self.add_token_literal(lexeme, Literal::None);
+        self.add_token_literal(lexeme, LiteralValue::None);
     }
 
-    fn add_token_literal(&mut self, lexeme: String, literal: Literal) {
+    fn add_token_literal(&mut self, lexeme: String, literal: LiteralValue) {
         self.tokens.push(Token::new(lexeme, literal, self.line));
     }
 

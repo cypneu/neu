@@ -1,10 +1,17 @@
+mod ast_printer;
+mod expr;
+mod parser;
 mod scanner;
 mod token;
+mod visitor;
 
+use ast_printer::AstPrinter;
+use expr::Expr;
 use scanner::Scanner;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use token::{LiteralValue, Token};
 
 #[derive(Debug)]
 struct Neu {
@@ -75,5 +82,19 @@ impl Neu {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    Neu::main(args);
+    // Neu::main(args);
+
+    let expr = Expr::Binary {
+        left: Box::new(Expr::Unary {
+            operator: Token::new("-".into(), LiteralValue::None, 1),
+            right: Box::new(Expr::Literal(LiteralValue::Number(123.0))),
+        }),
+        operator: Token::new("*".into(), LiteralValue::None, 1),
+        right: Box::new(Expr::Grouping {
+            expression: Box::new(Expr::Literal(LiteralValue::Number(45.67))),
+        }),
+    };
+
+    let mut ast_printer = AstPrinter;
+    println!("{}", ast_printer.print(&expr));
 }
