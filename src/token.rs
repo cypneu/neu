@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -45,26 +45,25 @@ pub enum TokenType {
 }
 
 #[derive(Debug)]
-pub enum LiteralValue {
-    None,
+pub enum Literal {
     String(String),
     Number(f64),
 }
 
 #[derive(Debug)]
 pub struct Token {
-    kind: TokenType,
+    pub kind: TokenType,
     pub lexeme: String,
-    literal_value: LiteralValue,
+    pub literal: Option<Literal>,
     line: usize,
 }
 
 impl Token {
-    pub fn new(lexeme: String, literal_value: LiteralValue, line: usize) -> Self {
+    pub fn new(lexeme: String, literal: Option<Literal>, line: usize) -> Self {
         Token {
             kind: lexeme.as_str().into(),
             lexeme,
-            literal_value,
+            literal,
             line,
         }
     }

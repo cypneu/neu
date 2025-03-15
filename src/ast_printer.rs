@@ -1,5 +1,5 @@
-use crate::expr::Expr;
-use crate::token::{LiteralValue, Token};
+use crate::expr::{Expr, Value};
+use crate::token::{Literal, Token};
 use crate::visitor::Visitor;
 
 #[derive(Debug)]
@@ -30,11 +30,11 @@ impl Visitor<String> for AstPrinter {
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> String {
         self.parenthesize(&operator.lexeme, &[right])
     }
-    fn visit_literal_expr(&mut self, value: &LiteralValue) -> String {
+    fn visit_literal_expr(&mut self, value: &Value) -> String {
         match value {
-            LiteralValue::Number(n) => n.to_string(),
-            LiteralValue::String(s) => s.clone(),
-            LiteralValue::None => String::from("none"),
+            Value::Literal(Literal::Number(number)) => number.to_string(),
+            Value::Literal(Literal::String(string)) => string.into(),
+            value => format!("{:?}", value),
         }
     }
     fn visit_grouping_expr(&mut self, expr: &Expr) -> String {

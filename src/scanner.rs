@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::token::{LiteralValue, Token};
+use crate::token::{Literal, Token};
 use crate::Neu;
 
 #[derive(Debug)]
@@ -13,7 +13,12 @@ pub struct Scanner<'a, 'b> {
 }
 
 impl<'a, 'b> Scanner<'a, 'b> {
-    pub fn new(source: &'a str, neu: &'b mut Neu) -> Self {
+    pub fn scan(source: &'a str, neu: &'b mut Neu) -> Vec<Token> {
+        let scanner = Scanner::new(source, neu);
+        scanner.scan_tokens()
+    }
+
+    fn new(source: &'a str, neu: &'b mut Neu) -> Self {
         Scanner {
             source: source.chars().peekable(),
             tokens: Vec::new(),
@@ -22,11 +27,13 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
+    fn scan_tokens(mut self) -> Vec<Token> {
         while let Some(character) = self.advance() {
             let ch = character.into();
             match character {
-                '(' | ')' | '{' | '}' | ',' | '.' | '-' | '+' | ';' | '*' => self.add_token(ch),
+                '(' | ')' | '{' | '}' | ',' | '.' | '-' | '+' | ';' | '*' | '%' => {
+                    self.add_token(ch)
+                }
                 '!' | '=' | '<' | '>' => {
                     let token = if self.matches('=') { ch + "=" } else { ch };
                     self.add_token(token);
@@ -48,7 +55,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
 
         self.add_token("".into());
-        &self.tokens
+        self.tokens
     }
 
     fn scan_string(&mut self) {
@@ -57,20 +64,20 @@ impl<'a, 'b> Scanner<'a, 'b> {
         if self.advance().is_none() {
             self.neu.error(self.line, "Unterminated string.".into());
         } else {
-            self.add_token_literal(format!("\"{}\"", value), LiteralValue::String(value));
+            self.add_token_literal(format!("\"{}\"", value), Some(Literal::String(value)));
         }
     }
 
     fn scan_number(&mut self, mut num_str: String) {
         num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
 
-        if self.peek() == Some(&'.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+        if self.peek() == Some(&'.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
             num_str.push(self.advance().unwrap());
             num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
         }
 
         let num = num_str.parse::<f64>().unwrap();
-        self.add_token_literal(num_str, LiteralValue::Number(num));
+        self.add_token_literal(num_str, Some(Literal::Number(num)));
     }
 
     fn scan_identifier(&mut self, mut identifier: String) {
@@ -79,10 +86,10 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn add_token(&mut self, lexeme: String) {
-        self.add_token_literal(lexeme, LiteralValue::None);
+        self.add_token_literal(lexeme, None);
     }
 
-    fn add_token_literal(&mut self, lexeme: String, literal: LiteralValue) {
+    fn add_token_literal(&mut self, lexeme: String, literal: Option<Literal>) {
         self.tokens.push(Token::new(lexeme, literal, self.line));
     }
 
@@ -99,7 +106,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn matches(&mut self, expected: char) -> bool {
-        self.peek().map_or(false, |c| *c == expected) && {
+        self.peek().is_some_and(|c| *c == expected) && {
             self.advance();
             true
         }
@@ -110,7 +117,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         F: Fn(char) -> bool,
     {
         let mut buf = String::new();
-        while self.peek().map_or(false, |&c| predicate(c)) {
+        while self.peek().is_some_and(|&c| predicate(c)) {
             let ch = self.advance().unwrap();
             if ch == '\n' {
                 self.line += 1;

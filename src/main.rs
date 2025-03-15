@@ -6,12 +6,13 @@ mod token;
 mod visitor;
 
 use ast_printer::AstPrinter;
-use expr::Expr;
+use expr::{Expr, Value};
+use parser::Parser;
 use scanner::Scanner;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use token::{LiteralValue, Token};
+use token::{Literal, Token};
 
 #[derive(Debug)]
 struct Neu {
@@ -19,11 +20,7 @@ struct Neu {
 }
 
 impl Neu {
-    fn new() -> Self {
-        Neu { had_error: false }
-    }
-
-    pub fn main(args: Vec<String>) {
+    pub fn interpret(args: Vec<String>) {
         let mut neu = Neu::new();
 
         match args.len() {
@@ -62,12 +59,13 @@ impl Neu {
     }
 
     fn run(&mut self, source: String) {
-        let mut scanner = Scanner::new(&source, self);
-        let tokens = scanner.scan_tokens();
-
-        for token in tokens {
+        let tokens = Scanner::scan(&source, self);
+        for token in &tokens {
             println!("{:?}", token);
         }
+
+        let ast = Parser::parse(tokens);
+        println!("{:?}", ast);
     }
 
     pub fn error(&mut self, line: usize, message: String) {
@@ -78,20 +76,24 @@ impl Neu {
         eprintln!("[line {}] Error{}: {}", line, place, message);
         self.had_error = true;
     }
+
+    fn new() -> Self {
+        Neu { had_error: false }
+    }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    // Neu::main(args);
+    Neu::interpret(args);
 
     let expr = Expr::Binary {
         left: Box::new(Expr::Unary {
-            operator: Token::new("-".into(), LiteralValue::None, 1),
-            right: Box::new(Expr::Literal(LiteralValue::Number(123.0))),
+            operator: Token::new("-".into(), None, 1),
+            right: Box::new(Expr::Literal(Value::Literal(Literal::Number(123.0)))),
         }),
-        operator: Token::new("*".into(), LiteralValue::None, 1),
+        operator: Token::new("*".into(), None, 1),
         right: Box::new(Expr::Grouping {
-            expression: Box::new(Expr::Literal(LiteralValue::Number(45.67))),
+            expression: Box::new(Expr::Literal(Value::True)),
         }),
     };
 
