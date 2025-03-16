@@ -55,7 +55,7 @@ pub struct Token {
     pub kind: TokenType,
     pub lexeme: String,
     pub literal: Option<Literal>,
-    line: usize,
+    pub line: usize,
 }
 
 impl Token {

@@ -8,6 +8,7 @@
 
 use crate::expr::{Expr, Value};
 use crate::token::{Token, TokenType};
+use crate::Neu;
 use std::iter::Peekable;
 use std::vec::IntoIter;
 
@@ -22,21 +23,18 @@ const TERM_OPERATORS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
 const FACTOR_OPERATORS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
+struct ParseError;
+
 #[derive(Debug)]
-pub struct Parser {
+pub struct Parser<'a> {
     tokens: Peekable<IntoIter<Token>>,
+    neu: &'a mut Neu,
 }
 
-impl Parser {
-    pub fn parse(tokens: Vec<Token>) -> Expr {
-        let mut parser = Parser::new(tokens);
+impl<'a> Parser<'a> {
+    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Expr {
+        let mut parser = Parser::new(tokens, neu);
         parser.expression()
-    }
-
-    fn new(tokens: Vec<Token>) -> Self {
-        Parser {
-            tokens: tokens.into_iter().peekable(),
-        }
     }
 
     fn expression(&mut self) -> Expr {
@@ -80,13 +78,30 @@ impl Parser {
             LeftParen => {
                 let expression = Box::new(self.expression());
                 if !self.matches(&[TokenType::RightParen]) {
+                    self.error(token, "Expected ')' after expression".into());
                     panic!("Expected ')' after expression");
                 }
                 self.advance();
                 Expr::Grouping { expression }
             }
-            _ => panic!("Expected expression"),
+            _ => {
+                self.error(token, "Expected expression".into());
+                panic!("Expected expression")
+            }
         }
+    }
+
+    fn error(&mut self, token: Token, message: String) -> ParseError {
+        let location = match token.kind {
+            TokenType::Eof => " at end".into(),
+            _ => format!(" at '{}'", token.lexeme),
+        };
+        self.neu.report(token.line, location, message);
+        ParseError
+    }
+
+    fn synchronize() {
+        unimplemented!()
     }
 
     fn binary_expr<F>(&mut self, mut operand: F, operators: &[TokenType]) -> Expr
@@ -121,5 +136,12 @@ impl Parser {
 
     fn peek(&mut self) -> Option<&Token> {
         self.tokens.peek()
+    }
+
+    fn new(tokens: Vec<Token>, neu: &'a mut Neu) -> Self {
+        Parser {
+            tokens: tokens.into_iter().peekable(),
+            neu,
+        }
     }
 }

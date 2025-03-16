@@ -18,15 +18,6 @@ impl<'a, 'b> Scanner<'a, 'b> {
         scanner.scan_tokens()
     }
 
-    fn new(source: &'a str, neu: &'b mut Neu) -> Self {
-        Scanner {
-            source: source.chars().peekable(),
-            tokens: Vec::new(),
-            neu,
-            line: 1,
-        }
-    }
-
     fn scan_tokens(mut self) -> Vec<Token> {
         while let Some(character) = self.advance() {
             let ch = character.into();
@@ -50,7 +41,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 character if character.is_whitespace() => {}
                 character if character.is_ascii_digit() => self.scan_number(ch),
                 character if character.is_alphabetic() => self.scan_identifier(ch),
-                _ => self.neu.error(self.line, "Unexpected character.".into()),
+                _ => self.error(self.line, "Unexpected character.".into()),
             }
         }
 
@@ -62,7 +53,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         let value = self.consume_while(|c| c != '"');
 
         if self.advance().is_none() {
-            self.neu.error(self.line, "Unterminated string.".into());
+            self.error(self.line, "Unterminated string.".into());
         } else {
             self.add_token_literal(format!("\"{}\"", value), Some(Literal::String(value)));
         }
@@ -85,24 +76,17 @@ impl<'a, 'b> Scanner<'a, 'b> {
         self.add_token(identifier)
     }
 
-    fn add_token(&mut self, lexeme: String) {
-        self.add_token_literal(lexeme, None);
+    fn error(&mut self, line: usize, message: String) {
+        self.neu.report(line, "".into(), message);
     }
 
-    fn add_token_literal(&mut self, lexeme: String, literal: Option<Literal>) {
-        self.tokens.push(Token::new(lexeme, literal, self.line));
-    }
-
-    fn advance(&mut self) -> Option<char> {
-        self.source.next()
-    }
-
-    fn peek(&mut self) -> Option<&char> {
-        self.source.peek()
-    }
-
-    fn peek_next(&mut self) -> Option<char> {
-        self.source.clone().nth(1)
+    fn new(source: &'a str, neu: &'b mut Neu) -> Self {
+        Scanner {
+            source: source.chars().peekable(),
+            tokens: Vec::new(),
+            neu,
+            line: 1,
+        }
     }
 
     fn matches(&mut self, expected: char) -> bool {
@@ -125,5 +109,25 @@ impl<'a, 'b> Scanner<'a, 'b> {
             buf.push(ch);
         }
         buf
+    }
+
+    fn add_token(&mut self, lexeme: String) {
+        self.add_token_literal(lexeme, None);
+    }
+
+    fn add_token_literal(&mut self, lexeme: String, literal: Option<Literal>) {
+        self.tokens.push(Token::new(lexeme, literal, self.line));
+    }
+
+    fn advance(&mut self) -> Option<char> {
+        self.source.next()
+    }
+
+    fn peek(&mut self) -> Option<&char> {
+        self.source.peek()
+    }
+
+    fn peek_next(&mut self) -> Option<char> {
+        self.source.clone().nth(1)
     }
 }
