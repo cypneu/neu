@@ -1,7 +1,8 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::token::{Literal, Token};
+use crate::frontend::literal::Literal;
+use crate::frontend::token::Token;
 use crate::Neu;
 
 #[derive(Debug)]
@@ -73,7 +74,13 @@ impl<'a, 'b> Scanner<'a, 'b> {
 
     fn scan_identifier(&mut self, mut identifier: String) {
         identifier.push_str(self.consume_while(|c| c.is_alphanumeric()).as_str());
-        self.add_token(identifier)
+        let literal = match identifier.as_str() {
+            "true" => Some(Literal::from(true)),
+            "false" => Some(Literal::from(false)),
+            "none" => Some(Literal::None),
+            _ => None,
+        };
+        self.add_token_literal(identifier, literal);
     }
 
     fn error(&mut self, line: usize, message: String) {

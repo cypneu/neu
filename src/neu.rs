@@ -1,5 +1,5 @@
-use crate::parser::Parser;
-use crate::scanner::Scanner;
+use crate::frontend::parser::Parser;
+use crate::frontend::scanner::Scanner;
 use std::fs;
 use std::io::{self, Write};
 

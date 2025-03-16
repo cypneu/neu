@@ -1,6 +1,7 @@
-use crate::expr::{Expr, Value};
-use crate::token::{Literal, Token};
-use crate::visitor::Visitor;
+use crate::ast::expr::Expr;
+use crate::ast::visitor::Visitor;
+use crate::frontend::literal::Literal;
+use crate::frontend::token::Token;
 
 #[derive(Debug)]
 pub struct AstPrinter;
@@ -27,16 +28,19 @@ impl Visitor<String> for AstPrinter {
     fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> String {
         self.parenthesize(&operator.lexeme, &[left, right])
     }
+
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> String {
         self.parenthesize(&operator.lexeme, &[right])
     }
-    fn visit_literal_expr(&mut self, value: &Value) -> String {
-        match value {
-            Value::Literal(Literal::Number(number)) => number.to_string(),
-            Value::Literal(Literal::String(string)) => string.into(),
+
+    fn visit_literal_expr(&mut self, literal: &Literal) -> String {
+        match literal {
+            Literal::Number(number) => number.to_string(),
+            Literal::String(string) => string.into(),
             value => format!("{:?}", value),
         }
     }
+
     fn visit_grouping_expr(&mut self, expr: &Expr) -> String {
         self.parenthesize("group", &[expr])
     }

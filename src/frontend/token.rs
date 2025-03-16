@@ -1,3 +1,5 @@
+use crate::frontend::literal::Literal;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     LeftParen,
@@ -42,12 +44,6 @@ pub enum TokenType {
     Number,
 
     Eof,
-}
-
-#[derive(Debug)]
-pub enum Literal {
-    String(String),
-    Number(f64),
 }
 
 #[derive(Debug)]

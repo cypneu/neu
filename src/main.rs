@@ -1,16 +1,16 @@
-mod ast_printer;
-mod expr;
+mod ast;
+mod frontend;
+mod interpreter;
 mod neu;
-mod parser;
-mod scanner;
-mod token;
-mod visitor;
+mod utils;
+
 use std::env;
 
-use ast_printer::AstPrinter;
-use expr::{Expr, Value};
+use ast::expr::Expr;
+use frontend::literal::Literal;
+use frontend::token::Token;
 use neu::Neu;
-use token::{Literal, Token};
+use utils::ast_printer::AstPrinter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -19,11 +19,11 @@ fn main() {
     let expr = Expr::Binary {
         left: Box::new(Expr::Unary {
             operator: Token::new("-".into(), None, 1),
-            right: Box::new(Expr::Literal(Value::Literal(Literal::Number(123.0)))),
+            right: Box::new(Expr::Literal(Literal::Number(123.0))),
         }),
         operator: Token::new("*".into(), None, 1),
         right: Box::new(Expr::Grouping {
-            expression: Box::new(Expr::Literal(Value::True)),
+            expression: Box::new(Expr::Literal(Literal::Boolean(true))),
         }),
     };
 

@@ -1,13 +1,6 @@
-// expression     → equality ;
-// equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-// comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-// term           → factor ( ( "-" | "+" ) factor )* ;
-// factor         → unary ( ( "/" | "*" | "%" ) unary )* ;
-// unary          → ( "!" | "-" ) unary | primary ;
-// primary        → NUMBER | STRING | "true" | "false" | "none" | "(" expression ")" ;
-
-use crate::expr::{Expr, Value};
-use crate::token::{Token, TokenType};
+use crate::ast::expr::Expr;
+use crate::frontend::literal::Literal;
+use crate::frontend::token::{Token, TokenType};
 use crate::Neu;
 use std::iter::Peekable;
 use std::vec::IntoIter;
@@ -71,10 +64,10 @@ impl<'a> Parser<'a> {
         let token = self.advance().unwrap();
         use TokenType::*;
         match token.kind {
-            False => Expr::Literal(Value::False),
-            True => Expr::Literal(Value::True),
-            None => Expr::Literal(Value::None),
-            Number | String => Expr::Literal(Value::Literal(token.literal.unwrap())),
+            False => Expr::Literal(Literal::from(false)),
+            True => Expr::Literal(Literal::from(true)),
+            None => Expr::Literal(Literal::None),
+            Number | String => Expr::Literal(token.literal.unwrap()),
             LeftParen => {
                 let expression = Box::new(self.expression());
                 if !self.matches(&[TokenType::RightParen]) {

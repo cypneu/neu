@@ -1,13 +1,6 @@
-use crate::token::{Literal, Token};
-use crate::visitor::Visitor;
-
-#[derive(Debug)]
-pub enum Value {
-    None,
-    True,
-    False,
-    Literal(Literal),
-}
+use crate::ast::visitor::Visitor;
+use crate::frontend::literal::Literal;
+use crate::frontend::token::Token;
 
 #[derive(Debug)]
 pub enum Expr {
@@ -20,7 +13,7 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
-    Literal(Value),
+    Literal(Literal),
     Grouping {
         expression: Box<Expr>,
     },
