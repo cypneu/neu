@@ -10,31 +10,33 @@ impl Visitor<Literal> for Interpreter {
         let left_val = left.accept(self);
         let right_val = right.accept(self);
 
+        use TokenType::*;
         match operator.kind {
-            TokenType::Plus => self.eval_plus(left_val, right_val),
-            TokenType::Minus => self.eval_numeric_binop(left_val, right_val, |a, b| a - b),
-            TokenType::Slash => self.eval_numeric_binop(left_val, right_val, |a, b| a / b),
-            TokenType::Star => self.eval_numeric_binop(left_val, right_val, |a, b| a * b),
-            TokenType::Greater => self.eval_numeric_binop(left_val, right_val, |a, b| a > b),
-            TokenType::GreaterEqual => self.eval_numeric_binop(left_val, right_val, |a, b| a >= b),
-            TokenType::Less => self.eval_numeric_binop(left_val, right_val, |a, b| a < b),
-            TokenType::LessEqual => self.eval_numeric_binop(left_val, right_val, |a, b| a <= b),
-            // TODO: Implement case for BangEqual and EqualEqual
+            Plus => self.eval_plus(left_val, right_val),
+            Minus => self.eval_numeric_binop(left_val, right_val, |a, b| a - b),
+            Slash => self.eval_numeric_binop(left_val, right_val, |a, b| a / b),
+            Star => self.eval_numeric_binop(left_val, right_val, |a, b| a * b),
+            Modulo => self.eval_numeric_binop(left_val, right_val, |a, b| a % b),
+
+            Greater => self.eval_numeric_binop(left_val, right_val, |a, b| a > b),
+            GreaterEqual => self.eval_numeric_binop(left_val, right_val, |a, b| a >= b),
+            Less => self.eval_numeric_binop(left_val, right_val, |a, b| a < b),
+            LessEqual => self.eval_numeric_binop(left_val, right_val, |a, b| a <= b),
+
+            BangEqual => Literal::from(!(left_val == right_val)),
+            EqualEqual => Literal::from(left_val == right_val),
+
             _ => unreachable!("Unknown binary operator"),
         }
     }
 
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Literal {
-        let right_val = right.accept(self);
+        let val = right.accept(self);
+
+        use TokenType::*;
         match operator.kind {
-            TokenType::Minus => (-right_val
-                .as_number()
-                .expect("Expected a number for unary minus"))
-            .into(),
-            TokenType::Bang => (!right_val
-                .as_bool()
-                .expect("Expected a boolean for bang operator"))
-            .into(),
+            Minus => (-val.as_number().expect("Expected a number for unary minus")).into(),
+            Bang => (!val.as_bool().expect("Expected a bool for bang")).into(),
             _ => panic!("Unexpected unary operator"),
         }
     }

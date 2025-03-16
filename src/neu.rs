@@ -1,5 +1,7 @@
 use crate::frontend::parser::Parser;
 use crate::frontend::scanner::Scanner;
+use crate::interpreter::Interpreter;
+use crate::utils::ast_printer::AstPrinter;
 use std::fs;
 use std::io::{self, Write};
 
@@ -9,17 +11,8 @@ pub struct Neu {
 }
 
 impl Neu {
-    pub fn interpret(args: Vec<String>) {
-        let mut neu = Neu::new();
-
-        match args.len() {
-            1 => neu.run_prompt(),
-            2 => neu.run_file(&args[1]),
-            _ => {
-                println!("Usage: neu [script]");
-                std::process::exit(64)
-            }
-        }
+    pub fn new() -> Self {
+        Neu { had_error: false }
     }
 
     pub fn report(&mut self, line: usize, place: String, message: String) {
@@ -27,7 +20,7 @@ impl Neu {
         self.had_error = true;
     }
 
-    fn run_file(&mut self, path: &String) {
+    pub fn run_file(&mut self, path: &String) {
         let contents = fs::read_to_string(path).unwrap();
         self.run(contents);
         if self.had_error {
@@ -35,7 +28,7 @@ impl Neu {
         }
     }
 
-    fn run_prompt(&mut self) {
+    pub fn run_prompt(&mut self) {
         loop {
             print!("> ");
             let _ = io::stdout().flush();
@@ -64,10 +57,10 @@ impl Neu {
             return;
         }
 
-        println!("{:?}", ast);
-    }
+        let literal = ast.accept(&mut Interpreter);
+        println!("{:?}", literal);
 
-    fn new() -> Self {
-        Neu { had_error: false }
+        let mut ast_printer = AstPrinter;
+        println!("{}", ast_printer.print(&ast));
     }
 }
