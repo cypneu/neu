@@ -1,6 +1,7 @@
 use crate::frontend::parser::Parser;
 use crate::frontend::scanner::Scanner;
 use crate::interpreter::Interpreter;
+use crate::runtime_error::RuntimeError;
 use crate::utils::ast_printer::AstPrinter;
 use std::fs;
 use std::io::{self, Write};
@@ -8,16 +9,28 @@ use std::io::{self, Write};
 #[derive(Debug)]
 pub struct Neu {
     had_error: bool,
+    had_runtime_error: bool,
 }
 
 impl Neu {
     pub fn new() -> Self {
-        Neu { had_error: false }
+        Neu {
+            had_error: false,
+            had_runtime_error: false,
+        }
     }
 
     pub fn report(&mut self, line: usize, place: String, message: String) {
-        eprintln!("[line {}] Error{}: {}", line, place, message);
+        eprintln!("\x1b[31mError{} [Line {}]\x1b[0m: {}", place, line, message);
         self.had_error = true;
+    }
+
+    pub fn runtime_error(&mut self, error: RuntimeError) {
+        eprintln!(
+            "\x1b[31mRuntime Error [Line {}]\x1b[0m: {}",
+            error.token.line, error.message
+        );
+        self.had_runtime_error = true;
     }
 
     pub fn run_file(&mut self, path: &String) {
@@ -25,6 +38,9 @@ impl Neu {
         self.run(contents);
         if self.had_error {
             std::process::exit(65);
+        }
+        if self.had_runtime_error {
+            std::process::exit(70);
         }
     }
 
@@ -51,14 +67,19 @@ impl Neu {
             println!("{:?}", token);
         }
 
-        let ast = Parser::parse(tokens, self);
+        let ast = match Parser::parse(tokens, self) {
+            Some(ast) => ast,
+            None => return,
+        };
 
         if self.had_error {
             return;
         }
 
-        let literal = ast.accept(&mut Interpreter);
-        println!("{:?}", literal);
+        match Interpreter.interpret(&ast) {
+            Ok(value) => println!("{:?}", value),
+            Err(err) => self.runtime_error(err),
+        }
 
         let mut ast_printer = AstPrinter;
         println!("{}", ast_printer.print(&ast));

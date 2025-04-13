@@ -42,7 +42,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 character if character.is_whitespace() => {}
                 character if character.is_ascii_digit() => self.scan_number(ch),
                 character if character.is_alphabetic() => self.scan_identifier(ch),
-                _ => self.error(self.line, "Unexpected character.".into()),
+                character => self.error(self.line, format!("Unexpected character '{}'", character)),
             }
         }
 

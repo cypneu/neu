@@ -16,7 +16,22 @@ const TERM_OPERATORS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
 const FACTOR_OPERATORS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
-struct ParseError;
+#[derive(Debug)]
+pub struct ParseError {
+    token: Token,
+    message: String,
+}
+
+impl ParseError {
+    fn new(token: &Token, message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            token: token.clone(),
+        }
+    }
+}
+
+type ParserResult = Result<Expr, ParseError>;
 
 #[derive(Debug)]
 pub struct Parser<'a> {
@@ -25,94 +40,90 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Expr {
+    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Option<Expr> {
         let mut parser = Parser::new(tokens, neu);
-        parser.expression()
+        parser.expression().ok()
     }
 
-    fn expression(&mut self) -> Expr {
+    fn expression(&mut self) -> ParserResult {
         self.equality()
     }
 
-    fn equality(&mut self) -> Expr {
+    fn equality(&mut self) -> ParserResult {
         self.binary_expr(Self::comparison, &EQUALITY_OPERATORS)
     }
 
-    fn comparison(&mut self) -> Expr {
+    fn comparison(&mut self) -> ParserResult {
         self.binary_expr(Self::term, &COMPARISON_OPERATORS)
     }
 
-    fn term(&mut self) -> Expr {
+    fn term(&mut self) -> ParserResult {
         self.binary_expr(Self::factor, &TERM_OPERATORS)
     }
 
-    fn factor(&mut self) -> Expr {
+    fn factor(&mut self) -> ParserResult {
         self.binary_expr(Self::unary, &FACTOR_OPERATORS)
     }
 
-    fn unary(&mut self) -> Expr {
+    fn unary(&mut self) -> ParserResult {
         if self.matches(&UNARY_OPERATORS) {
             let operator = self.advance().unwrap();
-            let right = Box::new(self.unary());
-            return Expr::Unary { operator, right };
+            let right = Box::new(self.unary()?);
+            return Ok(Expr::Unary { operator, right });
         }
 
         self.primary()
     }
 
-    fn primary(&mut self) -> Expr {
+    fn primary(&mut self) -> ParserResult {
         let token = self.advance().unwrap();
         use TokenType::*;
         match token.kind {
-            False => Expr::Literal(Literal::from(false)),
-            True => Expr::Literal(Literal::from(true)),
-            None => Expr::Literal(Literal::None),
-            Number | String => Expr::Literal(token.literal.unwrap()),
+            False => Ok(Expr::Literal(Literal::from(false))),
+            True => Ok(Expr::Literal(Literal::from(true))),
+            None => Ok(Expr::Literal(Literal::None)),
+            Number | String => Ok(Expr::Literal(token.literal.unwrap())),
             LeftParen => {
-                let expression = Box::new(self.expression());
+                let expression = Box::new(self.expression()?);
                 if !self.matches(&[TokenType::RightParen]) {
-                    self.error(token, "Expected ')' after expression".into());
-                    panic!("Expected ')' after expression");
+                    return Err(self.error(&token, "Expected ')' after expression"));
                 }
                 self.advance();
-                Expr::Grouping { expression }
+                Ok(Expr::Grouping { expression })
             }
-            _ => {
-                self.error(token, "Expected expression".into());
-                panic!("Expected expression")
-            }
+            _ => Err(self.error(&token, "Expected expression")),
         }
     }
 
-    fn error(&mut self, token: Token, message: String) -> ParseError {
+    fn error(&mut self, token: &Token, message: &str) -> ParseError {
         let location = match token.kind {
             TokenType::Eof => " at end".into(),
             _ => format!(" at '{}'", token.lexeme),
         };
-        self.neu.report(token.line, location, message);
-        ParseError
+        self.neu.report(token.line, location, message.into());
+        ParseError::new(token, message)
     }
 
     fn synchronize() {
         unimplemented!()
     }
 
-    fn binary_expr<F>(&mut self, mut operand: F, operators: &[TokenType]) -> Expr
+    fn binary_expr<F>(&mut self, mut operand: F, operators: &[TokenType]) -> ParserResult
     where
-        F: FnMut(&mut Self) -> Expr,
+        F: FnMut(&mut Self) -> ParserResult,
     {
-        let mut expr = operand(self);
+        let mut expr = operand(self)?;
 
         while self.matches(operators) {
             let operator = self.advance().unwrap();
-            let right = operand(self);
+            let right = operand(self)?;
             expr = Expr::Binary {
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
-            };
+            }
         }
-        expr
+        Ok(expr)
     }
 
     fn matches(&mut self, token_types: &[TokenType]) -> bool {

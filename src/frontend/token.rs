@@ -1,6 +1,6 @@
 use crate::frontend::literal::Literal;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -46,7 +46,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenType,
     pub lexeme: String,
