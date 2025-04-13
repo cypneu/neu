@@ -63,10 +63,6 @@ impl Neu {
 
     fn run(&mut self, source: String) {
         let tokens = Scanner::scan(&source, self);
-        for token in &tokens {
-            println!("{:?}", token);
-        }
-
         let ast = match Parser::parse(tokens, self) {
             Some(ast) => ast,
             None => return,
@@ -81,7 +77,7 @@ impl Neu {
             Err(err) => self.runtime_error(err),
         }
 
-        let mut ast_printer = AstPrinter;
-        println!("{}", ast_printer.print(&ast));
+        // let mut ast_printer = AstPrinter;
+        // println!("{}", ast_printer.print(&ast));
     }
 }
