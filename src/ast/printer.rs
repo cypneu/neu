@@ -1,5 +1,4 @@
-use crate::ast::expr::Expr;
-use crate::ast::visitor::Visitor;
+use crate::ast::expr::{Expr, Visitor};
 use crate::frontend::literal::Literal;
 use crate::frontend::token::Token;
 
@@ -43,5 +42,9 @@ impl Visitor<String> for AstPrinter {
 
     fn visit_grouping_expr(&mut self, expr: &Expr) -> String {
         self.parenthesize("group", &[expr])
+    }
+
+    fn visit_variable_expr(&mut self, name: &Token) -> String {
+        format!("{:?}", name)
     }
 }

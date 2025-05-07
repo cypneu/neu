@@ -1,4 +1,5 @@
 use crate::ast::expr::Expr;
+use crate::ast::stmt::Stmt;
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
 use crate::Neu;
@@ -40,9 +41,43 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Option<Expr> {
+    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Vec<Stmt> {
         let mut parser = Parser::new(tokens, neu);
-        parser.expression().ok()
+
+        let mut statements = Vec::new();
+        while !parser.matches(&[TokenType::Eof]) {
+            statements.push(parser.statement());
+        }
+
+        statements
+    }
+
+    fn statement(&mut self) -> Stmt {
+        // FIXME: Synchronize if ParseError
+        if self.matches(&[TokenType::Identifier]) {
+            return self.variable_declaration();
+        }
+        self.expression_statement()
+    }
+
+    fn variable_declaration(&mut self) -> Stmt {
+        let name = self.advance().unwrap();
+
+        let mut initializer = None;
+        if self.matches(&[TokenType::Equal]) {
+            self.advance().unwrap();
+            initializer = Some(self.expression().unwrap());
+        }
+
+        self.advance(); // FIXME: This must be ;
+
+        Stmt::Variable { name, initializer }
+    }
+
+    fn expression_statement(&mut self) -> Stmt {
+        let expr = self.expression().unwrap();
+        self.advance(); // FIXME: This must be ; - add error handling
+        Stmt::Expr(expr)
     }
 
     fn expression(&mut self) -> ParserResult {
@@ -91,6 +126,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Expr::Grouping { expression })
             }
+            Identifier => Ok(Expr::Variable { name: token }),
             _ => Err(self.error(&token, "Expected expression")),
         }
     }

@@ -3,7 +3,6 @@ mod frontend;
 mod interpreter;
 mod neu;
 mod runtime_error;
-mod utils;
 
 use neu::Neu;
 

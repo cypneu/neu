@@ -1,8 +1,8 @@
+use crate::ast::printer::AstPrinter;
 use crate::frontend::parser::Parser;
 use crate::frontend::scanner::Scanner;
 use crate::interpreter::Interpreter;
 use crate::runtime_error::RuntimeError;
-use crate::utils::ast_printer::AstPrinter;
 use std::fs;
 use std::io::{self, Write};
 
@@ -63,19 +63,13 @@ impl Neu {
 
     fn run(&mut self, source: String) {
         let tokens = Scanner::scan(&source, self);
-        let ast = match Parser::parse(tokens, self) {
-            Some(ast) => ast,
-            None => return,
-        };
+        let statements = Parser::parse(tokens, self);
 
         if self.had_error {
             return;
         }
 
-        match Interpreter.interpret(&ast) {
-            Ok(value) => println!("{:?}", value),
-            Err(err) => self.runtime_error(err),
-        }
+        Interpreter.interpret(statements)
 
         // let mut ast_printer = AstPrinter;
         // println!("{}", ast_printer.print(&ast));
