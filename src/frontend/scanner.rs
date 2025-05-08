@@ -75,8 +75,8 @@ impl<'a, 'b> Scanner<'a, 'b> {
     fn scan_identifier(&mut self, mut identifier: String) {
         identifier.push_str(self.consume_while(|c| c.is_alphanumeric()).as_str());
         let literal = match identifier.as_str() {
-            "true" => Some(Literal::from(true)),
-            "false" => Some(Literal::from(false)),
+            "true" => Some(Literal::Boolean(true)),
+            "false" => Some(Literal::Boolean(false)),
             "none" => Some(Literal::None),
             _ => None,
         };

@@ -1,8 +1,7 @@
 mod ast;
 mod frontend;
-mod interpreter;
 mod neu;
-mod runtime_error;
+mod runtime;
 
 use neu::Neu;
 

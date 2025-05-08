@@ -45,6 +45,10 @@ impl Visitor<String> for AstPrinter {
     }
 
     fn visit_variable_expr(&mut self, name: &Token) -> String {
-        format!("{:?}", name)
+        format!("Variable: {:?}", name)
+    }
+
+    fn visit_assignment_expr(&mut self, name: &Token, value: &Expr) -> String {
+        format!("Name: {:?}, Value: {:?}", name, value)
     }
 }

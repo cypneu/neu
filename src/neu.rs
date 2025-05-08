@@ -1,8 +1,8 @@
-use crate::ast::printer::AstPrinter;
+// use crate::ast::printer::AstPrinter;
 use crate::frontend::parser::Parser;
 use crate::frontend::scanner::Scanner;
-use crate::interpreter::Interpreter;
-use crate::runtime_error::RuntimeError;
+use crate::runtime::interpreter::Interpreter;
+use crate::runtime::runtime_error::RuntimeError;
 use std::fs;
 use std::io::{self, Write};
 
@@ -69,7 +69,7 @@ impl Neu {
             return;
         }
 
-        Interpreter.interpret(statements)
+        Interpreter::interpret(statements);
 
         // let mut ast_printer = AstPrinter;
         // println!("{}", ast_printer.print(&ast));

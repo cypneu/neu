@@ -1,8 +1,10 @@
 use crate::ast::expr::Expr;
 use crate::ast::stmt::Stmt;
 use crate::frontend::literal::Literal;
+use crate::frontend::parser_error::ParseError;
 use crate::frontend::token::{Token, TokenType};
 use crate::Neu;
+
 use std::iter::Peekable;
 use std::vec::IntoIter;
 
@@ -17,22 +19,7 @@ const TERM_OPERATORS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
 const FACTOR_OPERATORS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
-#[derive(Debug)]
-pub struct ParseError {
-    token: Token,
-    message: String,
-}
-
-impl ParseError {
-    fn new(token: &Token, message: &str) -> Self {
-        Self {
-            message: message.to_string(),
-            token: token.clone(),
-        }
-    }
-}
-
-type ParserResult = Result<Expr, ParseError>;
+type ParserResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
 pub struct Parser<'a> {
@@ -43,92 +30,92 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Vec<Stmt> {
         let mut parser = Parser::new(tokens, neu);
-
         let mut statements = Vec::new();
+
         while !parser.matches(&[TokenType::Eof]) {
-            statements.push(parser.statement());
+            match parser.statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(_) => parser.synchronize(),
+            }
         }
 
         statements
     }
 
-    fn statement(&mut self) -> Stmt {
-        // FIXME: Synchronize if ParseError
-        if self.matches(&[TokenType::Identifier]) {
-            return self.variable_declaration();
-        }
+    fn statement(&mut self) -> ParserResult<Stmt> {
         self.expression_statement()
     }
 
-    fn variable_declaration(&mut self) -> Stmt {
-        let name = self.advance().unwrap();
+    fn expression_statement(&mut self) -> ParserResult<Stmt> {
+        let expr = self.expression()?;
 
-        let mut initializer = None;
-        if self.matches(&[TokenType::Equal]) {
-            self.advance().unwrap();
-            initializer = Some(self.expression().unwrap());
+        let msg = "Expect ';' after expression statement.";
+        self.consume(TokenType::Semicolon, msg)?;
+
+        Ok(Stmt::Expr(expr))
+    }
+
+    fn expression(&mut self) -> ParserResult<Expr> {
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> ParserResult<Expr> {
+        let lhs = self.equality()?;
+        if !self.matches(&[TokenType::Equal]) {
+            return Ok(lhs);
         }
 
-        self.advance(); // FIXME: This must be ;
+        let equals = self.advance();
+        let rhs = self.assignment()?;
 
-        Stmt::Variable { name, initializer }
+        match lhs {
+            Expr::Variable { name } => Ok(Expr::assign(name, rhs)),
+            _ => Err(self.error(&equals, "Invalid target assignment")),
+        }
     }
 
-    fn expression_statement(&mut self) -> Stmt {
-        let expr = self.expression().unwrap();
-        self.advance(); // FIXME: This must be ; - add error handling
-        Stmt::Expr(expr)
-    }
-
-    fn expression(&mut self) -> ParserResult {
-        self.equality()
-    }
-
-    fn equality(&mut self) -> ParserResult {
+    fn equality(&mut self) -> ParserResult<Expr> {
         self.binary_expr(Self::comparison, &EQUALITY_OPERATORS)
     }
 
-    fn comparison(&mut self) -> ParserResult {
+    fn comparison(&mut self) -> ParserResult<Expr> {
         self.binary_expr(Self::term, &COMPARISON_OPERATORS)
     }
 
-    fn term(&mut self) -> ParserResult {
+    fn term(&mut self) -> ParserResult<Expr> {
         self.binary_expr(Self::factor, &TERM_OPERATORS)
     }
 
-    fn factor(&mut self) -> ParserResult {
+    fn factor(&mut self) -> ParserResult<Expr> {
         self.binary_expr(Self::unary, &FACTOR_OPERATORS)
     }
 
-    fn unary(&mut self) -> ParserResult {
+    fn unary(&mut self) -> ParserResult<Expr> {
         if self.matches(&UNARY_OPERATORS) {
-            let operator = self.advance().unwrap();
-            let right = Box::new(self.unary()?);
-            return Ok(Expr::Unary { operator, right });
+            let operator = self.advance();
+            let right = self.unary()?;
+            return Ok(Expr::unary(operator, right));
         }
 
         self.primary()
     }
 
-    fn primary(&mut self) -> ParserResult {
-        let token = self.advance().unwrap();
-        use TokenType::*;
-        match token.kind {
-            False => Ok(Expr::Literal(Literal::from(false))),
-            True => Ok(Expr::Literal(Literal::from(true))),
-            None => Ok(Expr::Literal(Literal::None)),
-            Number | String => Ok(Expr::Literal(token.literal.unwrap())),
-            LeftParen => {
-                let expression = Box::new(self.expression()?);
-                if !self.matches(&[TokenType::RightParen]) {
-                    return Err(self.error(&token, "Expected ')' after expression"));
-                }
-                self.advance();
-                Ok(Expr::Grouping { expression })
+    fn primary(&mut self) -> ParserResult<Expr> {
+        let token = self.advance();
+        let expr = match token.kind {
+            TokenType::False => false.into(),
+            TokenType::True => true.into(),
+            TokenType::None => Literal::None.into(),
+            TokenType::Number | TokenType::String => token.literal.unwrap().into(),
+            TokenType::LeftParen => {
+                let expression = self.expression()?;
+                self.consume(TokenType::RightParen, "Expected ')' after expression")?;
+                Expr::group(expression)
             }
-            Identifier => Ok(Expr::Variable { name: token }),
-            _ => Err(self.error(&token, "Expected expression")),
-        }
+            TokenType::Identifier => Expr::variable(token),
+            _ => return Err(self.error(&token, "Expected expression")),
+        };
+        Ok(expr)
     }
 
     fn error(&mut self, token: &Token, message: &str) -> ParseError {
@@ -140,48 +127,61 @@ impl<'a> Parser<'a> {
         ParseError::new(token, message)
     }
 
-    fn synchronize() {
-        unimplemented!()
+    fn synchronize(&mut self) {
+        while !self.matches(&[TokenType::Eof]) {
+            match self.peek().kind {
+                TokenType::Semicolon => {
+                    self.advance();
+                    return;
+                }
+                TokenType::Class
+                | TokenType::Fn
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Return => return,
+                _ => self.advance(),
+            };
+        }
     }
 
-    fn binary_expr<F>(&mut self, mut operand: F, operators: &[TokenType]) -> ParserResult
+    fn binary_expr<F>(&mut self, mut operand: F, operators: &[TokenType]) -> ParserResult<Expr>
     where
-        F: FnMut(&mut Self) -> ParserResult,
+        F: FnMut(&mut Self) -> ParserResult<Expr>,
     {
         let mut expr = operand(self)?;
 
         while self.matches(operators) {
-            let operator = self.advance().unwrap();
+            let operator = self.advance();
             let right = operand(self)?;
-            expr = Expr::Binary {
-                left: Box::new(expr),
-                operator,
-                right: Box::new(right),
-            }
+            expr = Expr::binary(expr, operator, right)
         }
         Ok(expr)
     }
 
+    fn consume(&mut self, kind: TokenType, message: &str) -> Result<Token, ParseError> {
+        if self.peek().kind == kind {
+            Ok(self.advance())
+        } else {
+            let token = self.peek().clone();
+            Err(self.error(&token, message))
+        }
+    }
+
     fn matches(&mut self, token_types: &[TokenType]) -> bool {
-        self.peek().is_some_and(|token| {
-            token_types
-                .iter()
-                .any(|token_type| *token_type == token.kind)
-        })
+        token_types.contains(&self.peek().kind)
     }
 
-    fn advance(&mut self) -> Option<Token> {
-        self.tokens.next()
+    fn advance(&mut self) -> Token {
+        self.tokens.next().unwrap()
     }
 
-    fn peek(&mut self) -> Option<&Token> {
-        self.tokens.peek()
+    fn peek(&mut self) -> &Token {
+        self.tokens.peek().unwrap()
     }
 
     fn new(tokens: Vec<Token>, neu: &'a mut Neu) -> Self {
-        Parser {
-            tokens: tokens.into_iter().peekable(),
-            neu,
-        }
+        let tokens = tokens.into_iter().peekable();
+        Parser { tokens, neu }
     }
 }
