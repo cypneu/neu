@@ -1,3 +1,13 @@
-a = 432;
-b = c = 432;
-d = a + b;
+// Arithmetic
+x = 5 * (3 + 4) % 3;
+y = 1234.45;
+z = x + y;
+
+// String ops
+s1 = "asdf";
+s2 = "fdas";
+s3 = s1 + s2;
+
+// Boolean
+a = true;
+b = false;

@@ -31,7 +31,19 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
         You could create the `main.neu` file mentioned above with the following content:
 
         ```neu
-        2 + 4 % 3 == "asdf";
+        // Arithmetic
+        x = 5 * (3 + 4) % 3;
+        y = 1234.45;
+        z = x + y;
+
+        // String ops
+        s1 = "asdf";
+        s2 = "fdas";
+        s3 = s1 + s2;
+
+        // Boolean
+        a = true;
+        b = false;
         ```
 
         Running `cargo run main.neu` would then execute this script.
