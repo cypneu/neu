@@ -44,6 +44,17 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
         // Boolean
         a = true;
         b = false;
+
+        // Scope
+        xouter = 5;
+        {
+          xinner1 = 4;
+          {
+            xinner2 = xouter + 1;
+            xinner1 = 5;
+          }
+          x3 = xinner1 + xouter;
+        }
         ```
 
         Running `cargo run main.neu` would then execute this script.

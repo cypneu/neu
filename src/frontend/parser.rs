@@ -30,12 +30,11 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Vec<Stmt> {
         let mut parser = Parser::new(tokens, neu);
-        let mut statements = Vec::new();
 
+        let mut statements = Vec::new();
         while !parser.matches(&[TokenType::Eof]) {
-            match parser.statement() {
-                Ok(stmt) => statements.push(stmt),
-                Err(_) => parser.synchronize(),
+            if let Ok(stmt) = parser.statement() {
+                statements.push(stmt);
             }
         }
 
@@ -43,7 +42,17 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> ParserResult<Stmt> {
-        self.expression_statement()
+        let result = if self.matches(&[TokenType::LeftBrace]) {
+            Ok(Stmt::Block(self.block()?))
+        } else {
+            self.expression_statement()
+        };
+
+        if result.is_err() {
+            self.synchronize();
+        }
+
+        result
     }
 
     fn expression_statement(&mut self) -> ParserResult<Stmt> {
@@ -53,6 +62,20 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Semicolon, msg)?;
 
         Ok(Stmt::Expr(expr))
+    }
+
+    fn block(&mut self) -> ParserResult<Vec<Stmt>> {
+        self.advance();
+        let mut statements = Vec::new();
+
+        while !self.matches(&[TokenType::RightBrace, TokenType::Eof]) {
+            if let Ok(stmt) = self.statement() {
+                statements.push(stmt);
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expected '}' after block")?;
+        Ok(statements)
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {

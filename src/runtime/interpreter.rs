@@ -8,7 +8,7 @@ use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
 
 pub struct Interpreter {
-    environment: Environment,
+    pub environment: Box<Environment>,
 }
 
 type ExprEvalResult = Result<Value, RuntimeError>;
@@ -71,17 +71,23 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
 
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
         let value = self.evaluate(expr)?;
-        self.environment.assign(name.lexeme.clone(), value.clone());
+        self.environment.assign(name, value.clone());
         Ok(value)
     }
 }
 
 impl stmt::Visitor<StmtEvalResult> for Interpreter {
     fn visit_expression_stmt(&mut self, expr: &Expr) -> StmtEvalResult {
-        println!("Expr stmt: {expr:#?}");
         let value = self.evaluate(expr)?;
-        println!("Expr stmt value: {:?}\n", value);
+        println!("Expr stmt: {:?}\nValue: {:?}\n", expr, value);
         Ok(())
+    }
+
+    fn visit_block_stmt(&mut self, stmts: &Vec<Stmt>) -> StmtEvalResult {
+        self.push_env();
+        let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
+        self.pop_env();
+        result
     }
 }
 
@@ -89,15 +95,14 @@ impl Interpreter {
     pub fn interpret(statements: Vec<Stmt>) {
         let mut interpreter = Interpreter::new();
         for statement in statements {
-            if let Err(err) = interpreter.execute(statement) {
+            if let Err(err) = interpreter.execute(&statement) {
                 println!("Err: {:?}", err);
             }
         }
     }
     fn new() -> Self {
-        Interpreter {
-            environment: Environment::new(),
-        }
+        let environment = Box::new(Environment::new(None));
+        Interpreter { environment }
     }
 
     fn eval_numeric_binop<T, F>(
@@ -143,7 +148,17 @@ impl Interpreter {
         expr.accept(self)
     }
 
-    fn execute(&mut self, stmt: Stmt) -> StmtEvalResult {
+    fn execute(&mut self, stmt: &Stmt) -> StmtEvalResult {
         stmt.accept(self)
+    }
+
+    fn push_env(&mut self) {
+        let parent = std::mem::replace(&mut self.environment, Box::new(Environment::new(None)));
+        self.environment = Box::new(Environment::new(Some(parent)));
+    }
+
+    fn pop_env(&mut self) {
+        let current = std::mem::replace(&mut self.environment, Box::new(Environment::new(None)));
+        self.environment = current.enclosing.expect("no enclosing environment");
     }
 }

@@ -11,3 +11,14 @@ s3 = s1 + s2;
 // Boolean
 a = true;
 b = false;
+
+// Scope
+xouter = 5;
+{
+  xinner1 = 4;
+  {
+    xinner2 = xouter + 1;
+    xinner1 = 5;
+  }
+  x3 = xinner1 + xouter;
+}
