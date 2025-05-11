@@ -22,3 +22,32 @@ xouter = 5;
   }
   x3 = xinner1 + xouter;
 }
+
+// Branching control flow
+if true {
+  branchTrue = "ran-true-branch";
+}
+
+if false {
+  branchSkipped = "you shouldn't see this";
+}
+
+if x > 0 {
+  positiveBranch = true;
+} else {
+  positiveBranch = false;
+}
+
+if x == 2 {
+  nestedA = "x-is-two";
+  if y < 1000 {
+    nestedB = "y-small";
+  } else if y < 1300 {
+    nestedB = "y-medium";
+  } else {
+    nestedB = "y-large";
+  }
+} else {
+  nestedA = "x-not-two";
+  nestedB = "no-inner";
+}

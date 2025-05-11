@@ -42,10 +42,10 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> ParserResult<Stmt> {
-        let result = if self.matches(&[TokenType::LeftBrace]) {
-            Ok(Stmt::Block(self.block()?))
-        } else {
-            self.expression_statement()
+        let result = match self.peek().kind {
+            TokenType::LeftBrace => self.block(),
+            TokenType::If => self.if_statement(),
+            _ => self.expression_statement(),
         };
 
         if result.is_err() {
@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Expr(expr))
     }
 
-    fn block(&mut self) -> ParserResult<Vec<Stmt>> {
+    fn block(&mut self) -> ParserResult<Stmt> {
         self.advance();
         let mut statements = Vec::new();
 
@@ -75,7 +75,30 @@ impl<'a> Parser<'a> {
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after block")?;
-        Ok(statements)
+        Ok(Stmt::Block(statements))
+    }
+
+    fn if_statement(&mut self) -> ParserResult<Stmt> {
+        self.advance();
+        let condition = self.equality()?;
+        let then_branch = self.block()?;
+        let else_branch = self.else_branch()?;
+        Ok(Stmt::if_stmt(condition, then_branch, else_branch))
+    }
+
+    fn else_branch(&mut self) -> ParserResult<Option<Stmt>> {
+        if !self.matches(&[TokenType::Else]) {
+            return Ok(None);
+        }
+
+        self.advance();
+
+        let branch = if self.peek().kind == TokenType::If {
+            self.if_statement()?
+        } else {
+            self.block()?
+        };
+        Ok(Some(branch))
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
@@ -214,13 +237,19 @@ mod tests {
     use super::*;
     use crate::frontend::scanner::Scanner;
 
-    fn parse_expr(src: &str) -> Expr {
+    fn parse_stmts(src: &str) -> Vec<Stmt> {
         let mut neu = Neu::new();
         let toks = Scanner::scan(src, &mut neu);
-        let mut stmts = Parser::parse(toks, &mut neu);
-        match stmts.remove(0) {
-            Stmt::Expr(e) => e,
-            _ => panic!("expected Expr statement"),
+        Parser::parse(toks, &mut neu)
+    }
+
+    fn parse_expr(src: &str) -> Expr {
+        let mut stmts = parse_stmts(src);
+        assert_eq!(stmts.len(), 1, "expected exactly one statement");
+        if let Stmt::Expr(expr) = stmts.remove(0) {
+            expr
+        } else {
+            panic!("expected an expression statement");
         }
     }
 
@@ -239,6 +268,65 @@ mod tests {
         match expr {
             Expr::Binary { op, .. } => assert_eq!(op.kind, TokenType::Star),
             _ => panic!("expected binary *"),
+        }
+    }
+
+    #[test]
+    fn parses_simple_if() {
+        let src = "if true { 1; }";
+        let stmts = parse_stmts(src);
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if let Expr::Literal(Literal::Boolean(b)) = condition {
+                    assert!(*b);
+                } else {
+                    panic!("expected Boolean literal in if condition");
+                }
+
+                if let Stmt::Block(inner) = &**then_branch {
+                    assert_eq!(inner.len(), 1);
+                } else {
+                    panic!("expected then-branch to be a block");
+                }
+
+                assert!(else_branch.is_none());
+            }
+            _ => panic!("expected an if statement"),
+        }
+    }
+
+    #[test]
+    fn parses_if_else_if_else() {
+        let src = "if false { 1; } else if true { 2; } else { 3; }";
+        let stmts = parse_stmts(src);
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Stmt::If {
+                else_branch: Some(else1),
+                ..
+            } => match &**else1 {
+                Stmt::If {
+                    condition,
+                    else_branch,
+                    ..
+                } => {
+                    if let Expr::Literal(Literal::Boolean(b)) = condition {
+                        assert!(*b);
+                    } else {
+                        panic!("expected Boolean literal in else-if condition");
+                    }
+                    assert!(else_branch.is_some());
+                }
+                _ => panic!("expected nested if in else-branch"),
+            },
+            _ => panic!("expected if with else branch"),
         }
     }
 }

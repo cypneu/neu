@@ -2,15 +2,22 @@ use crate::frontend::token::Token;
 
 #[derive(Debug)]
 pub struct RuntimeError {
-    pub token: Token,
+    pub token: Option<Token>,
     pub message: String,
 }
 
 impl RuntimeError {
-    pub fn new(token: &Token, message: &str) -> Self {
+    pub fn with_token(token: &Token, message: &str) -> Self {
         Self {
             message: message.to_string(),
-            token: token.clone(),
+            token: Some(token.clone()),
+        }
+    }
+
+    pub fn new(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            token: None,
         }
     }
 }

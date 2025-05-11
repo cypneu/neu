@@ -37,3 +37,15 @@ Value: Number(5.0)
 Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x3", literal: None, line: 23 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 23 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 23 }, right: Variable { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 23 } } } }
 Value: Number(10.0)
 
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "branchTrue", literal: None, line: 28 }, value: Literal(String("ran-true-branch")) }
+Value: String("ran-true-branch")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "positiveBranch", literal: None, line: 36 }, value: Literal(Boolean(true)) }
+Value: Boolean(true)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nestedA", literal: None, line: 42 }, value: Literal(String("x-is-two")) }
+Value: String("x-is-two")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nestedB", literal: None, line: 46 }, value: Literal(String("y-medium")) }
+Value: String("y-medium")
+

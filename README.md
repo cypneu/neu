@@ -55,6 +55,21 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
           }
           x3 = xinner1 + xouter;
         }
+
+        // Branching control flow
+        if x == 2 {
+          nestedA = "x-is-two";
+          if y < 1000 {
+            nestedB = "y-small";
+          } else if y < 1300 {
+            nestedB = "y-medium";
+          } else {
+            nestedB = "y-large";
+          }
+        } else {
+          nestedA = "x-not-two";
+          nestedB = "no-inner";
+        }
         ```
 
         Running `cargo run main.neu` would then execute this script.

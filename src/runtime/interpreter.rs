@@ -89,6 +89,24 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         self.pop_env();
         result
     }
+
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+    ) -> StmtEvalResult {
+        let truth = self
+            .evaluate(condition)?
+            .as_bool()
+            .ok_or_else(|| RuntimeError::new("If condition must be a boolean."))?;
+
+        match (truth, else_branch) {
+            (true, _) => self.execute(then_branch),
+            (false, Some(stmt)) => self.execute(stmt),
+            (false, None) => Ok(()),
+        }
+    }
 }
 
 impl Interpreter {
@@ -126,7 +144,7 @@ impl Interpreter {
         match (left, right) {
             (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
             (Value::String(l), Value::String(r)) => Ok(Value::String(l + &r)),
-            _ => Err(RuntimeError::new(
+            _ => Err(RuntimeError::with_token(
                 operator,
                 "Expected two numbers or two strings for '+' operator",
             )),
@@ -134,15 +152,17 @@ impl Interpreter {
     }
 
     fn expect_number(&self, value: Value, operator: &Token) -> Result<f64, RuntimeError> {
-        value
-            .as_number()
-            .ok_or(RuntimeError::new(operator, "Operand must be a number"))
+        value.as_number().ok_or(RuntimeError::with_token(
+            operator,
+            "Operand must be a number",
+        ))
     }
 
     fn expect_bool(&self, value: Value, operator: &Token) -> Result<bool, RuntimeError> {
-        value
-            .as_bool()
-            .ok_or(RuntimeError::new(operator, "Operand must be a boolean"))
+        value.as_bool().ok_or(RuntimeError::with_token(
+            operator,
+            "Operand must be a boolean",
+        ))
     }
 
     fn evaluate(&mut self, expr: &Expr) -> ExprEvalResult {
@@ -170,36 +190,33 @@ mod tests {
     use crate::frontend::{parser::Parser, scanner::Scanner};
     use crate::neu::Neu;
 
-    fn eval(src: &str) -> Value {
+    fn eval(src: &str, var: &str) -> Value {
         let mut neu = Neu::new();
         let toks = Scanner::scan(src, &mut neu);
-        let mut stmts = Parser::parse(toks, &mut neu);
+        let stmts = Parser::parse(toks, &mut neu);
 
         let mut interp = Interpreter::new();
-        let Stmt::Expr(expr) = stmts.remove(0) else {
-            unreachable!()
-        };
-        interp.evaluate(&expr).unwrap()
+        for stmt in stmts {
+            interp.execute(&stmt).unwrap();
+        }
+        let tok = Token::new(var.to_string(), None, 0);
+        interp.environment.get(&tok).unwrap().clone()
     }
 
     #[test]
-    fn arithmetic_add() {
-        assert_eq!(eval("1 + 2;"), Value::Number(3.0));
-    }
+    fn basic_expression_evaluation() {
+        let cases: &[(&str, Value)] = &[
+            ("1 + 2", Value::Number(3.0)),
+            ("\"ab\" + \"cd\"", Value::String("abcd".into())),
+            ("5 * (3 + 4) % 3", Value::Number(2.0)),
+            ("!false", Value::Boolean(true)),
+        ];
 
-    #[test]
-    fn string_concat() {
-        assert_eq!(eval("\"ab\" + \"cd\";"), Value::String("abcd".into()));
-    }
-
-    #[test]
-    fn modulo_precedence() {
-        assert_eq!(eval("5 * (3 + 4) % 3;"), Value::Number(2.0));
-    }
-
-    #[test]
-    fn boolean_not() {
-        assert_eq!(eval("!false;"), Value::Boolean(true));
+        for (expr, expected) in cases {
+            let src = format!("x = {};", expr);
+            let got = eval(&src, "x");
+            assert_eq!(got, *expected, "evaluating `{}`", expr);
+        }
     }
 
     #[test]
@@ -207,23 +224,39 @@ mod tests {
         let src = "
             x = 1;
             {
-               x = 2;
-               y = x;
+                x = 2;
+                y = x;
             }
             z = x;
         ";
+        assert_eq!(eval(src, "x"), Value::Number(2.0));
+    }
 
-        let mut neu = Neu::new();
-        let tokens = Scanner::scan(src, &mut neu);
-        let stmts = Parser::parse(tokens, &mut neu);
+    #[test]
+    fn if_true_executes_then_branch() {
+        assert_eq!(
+            eval("x = 0; if true { x = 1; } else { x = 2; }", "x"),
+            Value::Number(1.0)
+        );
+    }
 
-        let mut interp = Interpreter::new();
-        for stmt in stmts {
-            interp.execute(&stmt).unwrap();
-        }
+    #[test]
+    fn else_if_executes_first_true_branch() {
+        let src = "
+            x = 0;
+            if false  { x = 1; }
+            else if false {}
+            else if true  { x = 2; }
+            else          { x = 3; }
+        ";
+        assert_eq!(eval(src, "x"), Value::Number(2.0));
+    }
 
-        let token = Token::new("x".into(), None, 0);
-        let gv = interp.environment.get(&token).unwrap();
-        assert_eq!(gv, &Value::Number(2.0));
+    #[test]
+    fn else_branch_executes_when_condition_false() {
+        assert_eq!(
+            eval("x = 0; if false { x = 1; } else { x = 2; }", "x"),
+            Value::Number(2.0)
+        );
     }
 }

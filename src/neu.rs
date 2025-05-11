@@ -25,11 +25,9 @@ impl Neu {
         self.had_error = true;
     }
 
-    pub fn runtime_error(&mut self, error: RuntimeError) {
-        eprintln!(
-            "\x1b[31mRuntime Error [Line {}]\x1b[0m: {}",
-            error.token.line, error.message
-        );
+    pub fn runtime_error(&mut self, RuntimeError { token, message }: RuntimeError) {
+        let loc = token.map_or_else(String::new, |t| format!(" [Line {}]", t.line));
+        eprintln!("\x1b[31mRuntime Error{}\x1b[0m: {}", loc, message);
         self.had_runtime_error = true;
     }
 

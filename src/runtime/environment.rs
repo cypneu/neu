@@ -31,7 +31,7 @@ impl Environment {
             parent.get(name)
         } else {
             let msg = format!("Undefined variable '{}'", name.lexeme);
-            Err(RuntimeError::new(name, &msg))
+            Err(RuntimeError::with_token(name, &msg))
         }
     }
 
