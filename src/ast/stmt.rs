@@ -8,7 +8,7 @@ pub enum Stmt {
 
 pub trait Visitor<T> {
     fn visit_expression_stmt(&mut self, expr: &Expr) -> T;
-    fn visit_block_stmt(&mut self, stmts: &Vec<Stmt>) -> T;
+    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> T;
 }
 
 impl Stmt {

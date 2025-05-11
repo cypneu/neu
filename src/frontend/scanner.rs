@@ -138,3 +138,42 @@ impl<'a, 'b> Scanner<'a, 'b> {
         self.source.clone().nth(1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::token::TokenType;
+
+    fn scan(src: &str) -> Vec<TokenType> {
+        Scanner::scan(src, &mut Neu::new())
+            .into_iter()
+            .map(|t| t.kind)
+            .collect()
+    }
+
+    #[test]
+    fn single_char_tokens() {
+        let kinds = scan("()+-*;");
+        assert_eq!(
+            kinds,
+            vec![
+                TokenType::LeftParen,
+                TokenType::RightParen,
+                TokenType::Plus,
+                TokenType::Minus,
+                TokenType::Star,
+                TokenType::Semicolon,
+                TokenType::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn string_and_number_literals() {
+        let kinds = scan("\"foo\" 1234");
+        assert_eq!(
+            kinds,
+            vec![TokenType::String, TokenType::Number, TokenType::Eof]
+        );
+    }
+}

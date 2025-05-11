@@ -1,0 +1,39 @@
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x", literal: None, line: 2 }, value: Binary { left: Binary { left: Literal(Number(5.0)), op: Token { kind: Star, lexeme: "*", literal: None, line: 2 }, right: Grouping { expression: Binary { left: Literal(Number(3.0)), op: Token { kind: Plus, lexeme: "+", literal: None, line: 2 }, right: Literal(Number(4.0)) } } }, op: Token { kind: Modulo, lexeme: "%", literal: None, line: 2 }, right: Literal(Number(3.0)) } }
+Value: Number(2.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "y", literal: None, line: 3 }, value: Literal(Number(1234.45)) }
+Value: Number(1234.45)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "z", literal: None, line: 4 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "x", literal: None, line: 4 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 4 }, right: Variable { name: Token { kind: Identifier, lexeme: "y", literal: None, line: 4 } } } }
+Value: Number(1236.45)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "s1", literal: None, line: 7 }, value: Literal(String("asdf")) }
+Value: String("asdf")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "s2", literal: None, line: 8 }, value: Literal(String("fdas")) }
+Value: String("fdas")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "s3", literal: None, line: 9 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "s1", literal: None, line: 9 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 9 }, right: Variable { name: Token { kind: Identifier, lexeme: "s2", literal: None, line: 9 } } } }
+Value: String("asdffdas")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "a", literal: None, line: 12 }, value: Literal(Boolean(true)) }
+Value: Boolean(true)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "b", literal: None, line: 13 }, value: Literal(Boolean(false)) }
+Value: Boolean(false)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 16 }, value: Literal(Number(5.0)) }
+Value: Number(5.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 18 }, value: Literal(Number(4.0)) }
+Value: Number(4.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner2", literal: None, line: 20 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 20 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 20 }, right: Literal(Number(1.0)) } }
+Value: Number(6.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 21 }, value: Literal(Number(5.0)) }
+Value: Number(5.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x3", literal: None, line: 23 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 23 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 23 }, right: Variable { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 23 } } } }
+Value: Number(10.0)
+

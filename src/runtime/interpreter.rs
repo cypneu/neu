@@ -83,7 +83,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         Ok(())
     }
 
-    fn visit_block_stmt(&mut self, stmts: &Vec<Stmt>) -> StmtEvalResult {
+    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
         self.push_env();
         let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
         self.pop_env();
@@ -100,6 +100,7 @@ impl Interpreter {
             }
         }
     }
+
     fn new() -> Self {
         let environment = Box::new(Environment::new(None));
         Interpreter { environment }
@@ -160,5 +161,69 @@ impl Interpreter {
     fn pop_env(&mut self) {
         let current = std::mem::replace(&mut self.environment, Box::new(Environment::new(None)));
         self.environment = current.enclosing.expect("no enclosing environment");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::{parser::Parser, scanner::Scanner};
+    use crate::neu::Neu;
+
+    fn eval(src: &str) -> Value {
+        let mut neu = Neu::new();
+        let toks = Scanner::scan(src, &mut neu);
+        let mut stmts = Parser::parse(toks, &mut neu);
+
+        let mut interp = Interpreter::new();
+        let Stmt::Expr(expr) = stmts.remove(0) else {
+            unreachable!()
+        };
+        interp.evaluate(&expr).unwrap()
+    }
+
+    #[test]
+    fn arithmetic_add() {
+        assert_eq!(eval("1 + 2;"), Value::Number(3.0));
+    }
+
+    #[test]
+    fn string_concat() {
+        assert_eq!(eval("\"ab\" + \"cd\";"), Value::String("abcd".into()));
+    }
+
+    #[test]
+    fn modulo_precedence() {
+        assert_eq!(eval("5 * (3 + 4) % 3;"), Value::Number(2.0));
+    }
+
+    #[test]
+    fn boolean_not() {
+        assert_eq!(eval("!false;"), Value::Boolean(true));
+    }
+
+    #[test]
+    fn variable_scope() {
+        let src = "
+            x = 1;
+            {
+               x = 2;
+               y = x;
+            }
+            z = x;
+        ";
+
+        let mut neu = Neu::new();
+        let tokens = Scanner::scan(src, &mut neu);
+        let stmts = Parser::parse(tokens, &mut neu);
+
+        let mut interp = Interpreter::new();
+        for stmt in stmts {
+            interp.execute(&stmt).unwrap();
+        }
+
+        let token = Token::new("x".into(), None, 0);
+        let gv = interp.environment.get(&token).unwrap();
+        assert_eq!(gv, &Value::Number(2.0));
     }
 }

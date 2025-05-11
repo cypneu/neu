@@ -196,7 +196,7 @@ impl<'a> Parser<'a> {
     }
 
     fn advance(&mut self) -> Token {
-        self.tokens.next().unwrap()
+        self.tokens.next().expect("scanner guaranteed EOF")
     }
 
     fn peek(&mut self) -> &Token {
@@ -206,5 +206,39 @@ impl<'a> Parser<'a> {
     fn new(tokens: Vec<Token>, neu: &'a mut Neu) -> Self {
         let tokens = tokens.into_iter().peekable();
         Parser { tokens, neu }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::scanner::Scanner;
+
+    fn parse_expr(src: &str) -> Expr {
+        let mut neu = Neu::new();
+        let toks = Scanner::scan(src, &mut neu);
+        let mut stmts = Parser::parse(toks, &mut neu);
+        match stmts.remove(0) {
+            Stmt::Expr(e) => e,
+            _ => panic!("expected Expr statement"),
+        }
+    }
+
+    #[test]
+    fn precedence_term_vs_factor() {
+        let expr = parse_expr("1 + 2 * 3;");
+        match expr {
+            Expr::Binary { op, .. } => assert_eq!(op.kind, TokenType::Plus),
+            _ => panic!("expected binary +"),
+        }
+    }
+
+    #[test]
+    fn parses_grouping() {
+        let expr = parse_expr("(1 + 2) * 3;");
+        match expr {
+            Expr::Binary { op, .. } => assert_eq!(op.kind, TokenType::Star),
+            _ => panic!("expected binary *"),
+        }
     }
 }
