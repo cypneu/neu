@@ -74,6 +74,25 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         self.environment.assign(name, value.clone());
         Ok(value)
     }
+
+    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> ExprEvalResult {
+        let left_val = self.evaluate(left)?;
+        let left_bool = left_val
+            .as_bool()
+            .ok_or_else(|| RuntimeError::new("Logical operands must be a boolean."))?;
+
+        let eval_right = if op.kind == TokenType::Or {
+            !left_bool
+        } else {
+            left_bool
+        };
+
+        if eval_right {
+            self.evaluate(right)
+        } else {
+            Ok(left_val)
+        }
+    }
 }
 
 impl stmt::Visitor<StmtEvalResult> for Interpreter {
@@ -217,6 +236,43 @@ mod tests {
             let got = eval(&src, "x");
             assert_eq!(got, *expected, "evaluating `{}`", expr);
         }
+    }
+
+    #[test]
+    fn logical_and_evaluation() {
+        assert_eq!(eval("x = true and true;", "x"), Value::Boolean(true));
+        assert_eq!(eval("x = true and false;", "x"), Value::Boolean(false));
+        assert_eq!(eval("x = false and true;", "x"), Value::Boolean(false));
+        assert_eq!(eval("x = false and false;", "x"), Value::Boolean(false));
+    }
+
+    #[test]
+    fn logical_or_evaluation() {
+        assert_eq!(eval("x = true or true;", "x"), Value::Boolean(true));
+        assert_eq!(eval("x = true or false;", "x"), Value::Boolean(true));
+        assert_eq!(eval("x = false or true;", "x"), Value::Boolean(true));
+        assert_eq!(eval("x = false or false;", "x"), Value::Boolean(false));
+    }
+
+    #[test]
+    fn logical_precedence() {
+        assert_eq!(
+            eval("x = false or true and false;", "x"),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval("x = true and false or true;", "x"),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn logical_short_circuit_does_not_evaluate_rhs() {
+        let a = eval("x = false and undefinedVar;", "x");
+        assert_eq!(a, Value::Boolean(false));
+
+        let b = eval("x = true or undefinedVar;", "x");
+        assert_eq!(b, Value::Boolean(true));
     }
 
     #[test]

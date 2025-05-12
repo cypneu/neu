@@ -41,7 +41,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 '"' => self.scan_string(),
                 character if character.is_whitespace() => {}
                 character if character.is_ascii_digit() => self.scan_number(ch),
-                character if character.is_alphabetic() => self.scan_identifier(ch),
+                character if character.is_alphabetic() || ch == "_" => self.scan_identifier(ch),
                 character => self.error(self.line, format!("Unexpected character '{}'", character)),
             }
         }
@@ -73,7 +73,10 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn scan_identifier(&mut self, mut identifier: String) {
-        identifier.push_str(self.consume_while(|c| c.is_alphanumeric()).as_str());
+        identifier.push_str(
+            self.consume_while(|c| c.is_alphanumeric() || c == '_')
+                .as_str(),
+        );
         let literal = match identifier.as_str() {
             "true" => Some(Literal::Boolean(true)),
             "false" => Some(Literal::Boolean(false)),

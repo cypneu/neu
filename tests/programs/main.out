@@ -22,30 +22,51 @@ Value: Boolean(true)
 Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "b", literal: None, line: 13 }, value: Literal(Boolean(false)) }
 Value: Boolean(false)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 16 }, value: Literal(Number(5.0)) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x_outer", literal: None, line: 16 }, value: Literal(Number(5.0)) }
 Value: Number(5.0)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 18 }, value: Literal(Number(4.0)) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x_inner1", literal: None, line: 18 }, value: Literal(Number(4.0)) }
 Value: Number(4.0)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner2", literal: None, line: 20 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 20 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 20 }, right: Literal(Number(1.0)) } }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x_inner2", literal: None, line: 20 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "x_outer", literal: None, line: 20 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 20 }, right: Literal(Number(1.0)) } }
 Value: Number(6.0)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 21 }, value: Literal(Number(5.0)) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x_inner1", literal: None, line: 21 }, value: Literal(Number(5.0)) }
 Value: Number(5.0)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x3", literal: None, line: 23 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "xinner1", literal: None, line: 23 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 23 }, right: Variable { name: Token { kind: Identifier, lexeme: "xouter", literal: None, line: 23 } } } }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "x3", literal: None, line: 23 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "x_inner1", literal: None, line: 23 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 23 }, right: Variable { name: Token { kind: Identifier, lexeme: "x_outer", literal: None, line: 23 } } } }
 Value: Number(10.0)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "branchTrue", literal: None, line: 28 }, value: Literal(String("ran-true-branch")) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "branch_true", literal: None, line: 28 }, value: Literal(String("ran-true-branch")) }
 Value: String("ran-true-branch")
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "positiveBranch", literal: None, line: 36 }, value: Literal(Boolean(true)) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "positive_branch", literal: None, line: 36 }, value: Literal(Boolean(true)) }
 Value: Boolean(true)
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nestedA", literal: None, line: 42 }, value: Literal(String("x-is-two")) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nested_A", literal: None, line: 42 }, value: Literal(String("x-is-two")) }
 Value: String("x-is-two")
 
-Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nestedB", literal: None, line: 46 }, value: Literal(String("y-medium")) }
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "nested_B", literal: None, line: 46 }, value: Literal(String("y-medium")) }
 Value: String("y-medium")
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_t_and_t", literal: None, line: 56 }, value: Logical { left: Literal(Boolean(true)), op: Token { kind: And, lexeme: "and", literal: None, line: 56 }, right: Literal(Boolean(true)) } }
+Value: Boolean(true)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_t_and_f", literal: None, line: 57 }, value: Logical { left: Literal(Boolean(true)), op: Token { kind: And, lexeme: "and", literal: None, line: 57 }, right: Literal(Boolean(false)) } }
+Value: Boolean(false)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_f_and_t", literal: None, line: 58 }, value: Logical { left: Literal(Boolean(false)), op: Token { kind: And, lexeme: "and", literal: None, line: 58 }, right: Literal(Boolean(true)) } }
+Value: Boolean(false)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_f_and_f", literal: None, line: 59 }, value: Logical { left: Literal(Boolean(false)), op: Token { kind: And, lexeme: "and", literal: None, line: 59 }, right: Literal(Boolean(false)) } }
+Value: Boolean(false)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_or_combo", literal: None, line: 60 }, value: Logical { left: Logical { left: Variable { name: Token { kind: Identifier, lexeme: "logic_t_and_f", literal: None, line: 60 } }, op: Token { kind: Or, lexeme: "or", literal: None, line: 60 }, right: Variable { name: Token { kind: Identifier, lexeme: "logic_f_and_t", literal: None, line: 60 } } }, op: Token { kind: Or, lexeme: "or", literal: None, line: 60 }, right: Variable { name: Token { kind: Identifier, lexeme: "logic_t_and_t", literal: None, line: 60 } } } }
+Value: Boolean(true)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "logic_and_prec", literal: None, line: 61 }, value: Logical { left: Variable { name: Token { kind: Identifier, lexeme: "logic_t_and_f", literal: None, line: 61 } }, op: Token { kind: Or, lexeme: "or", literal: None, line: 61 }, right: Logical { left: Literal(Boolean(true)), op: Token { kind: And, lexeme: "and", literal: None, line: 61 }, right: Variable { name: Token { kind: Identifier, lexeme: "logic_t_and_t", literal: None, line: 61 } } } } }
+Value: Boolean(true)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "combined_logic_branch", literal: None, line: 64 }, value: Literal(String("logical and comparison true")) }
+Value: String("logical and comparison true")
 

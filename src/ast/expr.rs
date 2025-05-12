@@ -23,6 +23,11 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    Logical {
+        left: Box<Expr>,
+        op: Token,
+        right: Box<Expr>,
+    },
 }
 
 pub trait Visitor<T> {
@@ -32,6 +37,7 @@ pub trait Visitor<T> {
     fn visit_grouping_expr(&mut self, expr: &Expr) -> T;
     fn visit_variable_expr(&mut self, name: &Token) -> T;
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> T;
+    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> T;
 }
 
 impl Expr {
@@ -43,6 +49,7 @@ impl Expr {
             Expr::Grouping { expression } => visitor.visit_grouping_expr(expression),
             Expr::Variable { name } => visitor.visit_variable_expr(name),
             Expr::Assignment { name, value } => visitor.visit_assignment_expr(name, value),
+            Expr::Logical { left, op, right } => visitor.visit_logical_expr(left, op, right),
         }
     }
 
@@ -68,6 +75,11 @@ impl Expr {
     pub fn assign(name: Token, value: Expr) -> Self {
         let value = Box::new(value);
         Expr::Assignment { name, value }
+    }
+
+    pub fn logical(left: Expr, op: Token, right: Expr) -> Self {
+        let (left, right) = (Box::new(left), Box::new(right));
+        Expr::Logical { left, op, right }
     }
 }
 

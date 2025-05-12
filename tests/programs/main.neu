@@ -13,41 +13,55 @@ a = true;
 b = false;
 
 // Scope
-xouter = 5;
+x_outer = 5;
 {
-  xinner1 = 4;
+  x_inner1 = 4;
   {
-    xinner2 = xouter + 1;
-    xinner1 = 5;
+    x_inner2 = x_outer + 1;
+    x_inner1 = 5;
   }
-  x3 = xinner1 + xouter;
+  x3 = x_inner1 + x_outer;
 }
 
 // Branching control flow
 if true {
-  branchTrue = "ran-true-branch";
+  branch_true = "ran-true-branch";
 }
 
 if false {
-  branchSkipped = "you shouldn't see this";
+  branch_skipped = "you shouldn't see this";
 }
 
 if x > 0 {
-  positiveBranch = true;
+  positive_branch = true;
 } else {
-  positiveBranch = false;
+  positive_branch = false;
 }
 
 if x == 2 {
-  nestedA = "x-is-two";
+  nested_A = "x-is-two";
   if y < 1000 {
-    nestedB = "y-small";
+    nested_B = "y-small";
   } else if y < 1300 {
-    nestedB = "y-medium";
+    nested_B = "y-medium";
   } else {
-    nestedB = "y-large";
+    nested_B = "y-large";
   }
 } else {
-  nestedA = "x-not-two";
-  nestedB = "no-inner";
+  nested_A = "x-not-two";
+  nested_B = "no-inner";
+}
+
+// Logical operators
+logic_t_and_t = true and true;
+logic_t_and_f = true and false;
+logic_f_and_t = false and true;
+logic_f_and_f = false and false;
+logic_or_combo = logic_t_and_f or logic_f_and_t or logic_t_and_t;
+logic_and_prec = logic_t_and_f or true and logic_t_and_t;
+
+if logic_t_and_t and x > 1 {
+  combined_logic_branch = "logical and comparison true";
+} else {
+  combined_logic_branch = "logical and comparison false";
 }

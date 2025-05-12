@@ -51,4 +51,8 @@ impl Visitor<String> for AstPrinter {
     fn visit_assignment_expr(&mut self, name: &Token, value: &Expr) -> String {
         format!("Name: {:?}, Value: {:?}", name, value)
     }
+
+    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> String {
+        format!("Left: {:?}, Op: {:?}, Right: {:?}", left, op, right)
+    }
 }

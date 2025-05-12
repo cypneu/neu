@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
 
     fn if_statement(&mut self) -> ParserResult<Stmt> {
         self.advance();
-        let condition = self.equality()?;
+        let condition = self.or()?;
         let then_branch = self.block()?;
         let else_branch = self.else_branch()?;
         Ok(Stmt::if_stmt(condition, then_branch, else_branch))
@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
     }
 
     fn assignment(&mut self) -> ParserResult<Expr> {
-        let lhs = self.equality()?;
+        let lhs = self.or()?;
         if !self.matches(&[TokenType::Equal]) {
             return Ok(lhs);
         }
@@ -118,6 +118,30 @@ impl<'a> Parser<'a> {
             Expr::Variable { name } => Ok(Expr::assign(name, rhs)),
             _ => Err(self.error(&equals, "Invalid target assignment")),
         }
+    }
+
+    fn or(&mut self) -> ParserResult<Expr> {
+        let mut expr = self.and()?;
+
+        while self.matches(&[TokenType::Or]) {
+            let op = self.advance();
+            let right = self.and()?;
+            expr = Expr::logical(expr, op, right);
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> ParserResult<Expr> {
+        let mut expr = self.equality()?;
+
+        while self.matches(&[TokenType::And]) {
+            let op = self.advance();
+            let right = self.equality()?;
+            expr = Expr::logical(expr, op, right)
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> ParserResult<Expr> {
@@ -268,6 +292,36 @@ mod tests {
         match expr {
             Expr::Binary { op, .. } => assert_eq!(op.kind, TokenType::Star),
             _ => panic!("expected binary *"),
+        }
+    }
+
+    #[test]
+    fn parses_logical_and() {
+        let expr = parse_expr("true and false;");
+        match expr {
+            Expr::Logical { op, .. } => assert_eq!(op.kind, TokenType::And),
+            _ => panic!("expected logical and"),
+        }
+    }
+
+    #[test]
+    fn parses_logical_or() {
+        let expr = parse_expr("true or false;");
+        match expr {
+            Expr::Logical { op, .. } => assert_eq!(op.kind, TokenType::Or),
+            _ => panic!("expected logical or"),
+        }
+    }
+
+    #[test]
+    fn logical_precedence_and_over_or() {
+        let expr = parse_expr("false or true and false;");
+        match expr {
+            Expr::Logical { op, right, .. } => {
+                assert_eq!(op.kind, TokenType::Or);
+                assert!(matches!(*right, Expr::Logical { op, .. } if op.kind == TokenType::And));
+            }
+            _ => panic!("expected logical or"),
         }
     }
 
