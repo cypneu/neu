@@ -31,44 +31,31 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
         You could create the `main.neu` file mentioned above with the following content:
 
         ```neu
-        // Arithmetic
-        x = 5 * (3 + 4) % 3;
-        y = 1234.45;
-        z = x + y;
+        x = (10 + 2) * 3 / 4 - 5 % 2;
+        greet = "hello " + "world";
 
-        // String ops
-        s1 = "asdf";
-        s2 = "fdas";
-        s3 = s1 + s2;
+        truth = true and false or !false;
 
-        // Boolean
-        a = true;
-        b = false;
-
-        // Scope
-        xouter = 5;
+        // Block scope
+        outer = 1;
         {
-          xinner1 = 4;
-          {
-            xinner2 = xouter + 1;
-            xinner1 = 5;
-          }
-          x3 = xinner1 + xouter;
+          inner = outer + 1;
         }
 
-        // Branching control flow
-        if x == 2 {
-          nestedA = "x-is-two";
-          if y < 1000 {
-            nestedB = "y-small";
-          } else if y < 1300 {
-            nestedB = "y-medium";
-          } else {
-            nestedB = "y-large";
-          }
+        // Control flow with if / else if / else
+        if x > 10 {
+          status = "big";
+        } else if x > 0 {
+          status = "positive";
         } else {
-          nestedA = "x-not-two";
-          nestedB = "no-inner";
+          status = "non-negative";
+        }
+
+        // While loop
+        i = 0; sum = 0;
+        while i < 5 {
+          i = i + 1;
+          sum = sum + i;
         }
         ```
 

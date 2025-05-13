@@ -70,3 +70,33 @@ Value: Boolean(true)
 Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "combined_logic_branch", literal: None, line: 64 }, value: Literal(String("logical and comparison true")) }
 Value: String("logical and comparison true")
 
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 70 }, value: Literal(Number(0.0)) }
+Value: Number(0.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 71 }, value: Literal(Number(0.0)) }
+Value: Number(0.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 73 }, right: Literal(Number(1.0)) } }
+Value: Number(1.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 74 }, right: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 74 } } } }
+Value: Number(1.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 73 }, right: Literal(Number(1.0)) } }
+Value: Number(2.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 74 }, right: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 74 } } } }
+Value: Number(3.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 73 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 73 }, right: Literal(Number(1.0)) } }
+Value: Number(3.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 }, value: Binary { left: Variable { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 74 } }, op: Token { kind: Plus, lexeme: "+", literal: None, line: 74 }, right: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 74 } } } }
+Value: Number(6.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "final_counter_val", literal: None, line: 76 }, value: Variable { name: Token { kind: Identifier, lexeme: "counter", literal: None, line: 76 } } }
+Value: Number(3.0)
+
+Expr stmt: Assignment { name: Token { kind: Identifier, lexeme: "final_sum_val", literal: None, line: 77 }, value: Variable { name: Token { kind: Identifier, lexeme: "sum_in_loop", literal: None, line: 77 } } }
+Value: Number(6.0)
+

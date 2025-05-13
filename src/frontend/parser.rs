@@ -45,6 +45,7 @@ impl<'a> Parser<'a> {
         let result = match self.peek().kind {
             TokenType::LeftBrace => self.block(),
             TokenType::If => self.if_statement(),
+            TokenType::While => self.while_statement(),
             _ => self.expression_statement(),
         };
 
@@ -99,6 +100,13 @@ impl<'a> Parser<'a> {
             self.block()?
         };
         Ok(Some(branch))
+    }
+
+    fn while_statement(&mut self) -> ParserResult<Stmt> {
+        self.advance();
+        let condition = self.or()?;
+        let body = self.block()?;
+        Ok(Stmt::while_stmt(condition, body))
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
@@ -381,6 +389,46 @@ mod tests {
                 _ => panic!("expected nested if in else-branch"),
             },
             _ => panic!("expected if with else branch"),
+        }
+    }
+
+    #[test]
+    fn parses_while_statement() {
+        let src = "while x < 5 { x = x + 1; }";
+        let stmts = parse_stmts(src);
+        assert_eq!(stmts.len(), 1);
+
+        match &stmts[0] {
+            Stmt::While { condition, body } => {
+                match condition {
+                    Expr::Binary { op, left, right } => {
+                        assert_eq!(op.kind, TokenType::Less);
+                        match &**left {
+                            Expr::Variable { name } => assert_eq!(name.lexeme, "x"),
+                            _ => panic!("Expected variable 'x' on left of <"),
+                        }
+                        match &**right {
+                            Expr::Literal(Literal::Number(n)) => assert_eq!(*n, 5.0),
+                            _ => panic!("Expected number literal 5 on right of <"),
+                        }
+                    }
+                    _ => panic!("Expected binary expression for while condition"),
+                }
+
+                match &**body {
+                    Stmt::Block(block_stmts) => {
+                        assert_eq!(block_stmts.len(), 1);
+                        match &block_stmts[0] {
+                            Stmt::Expr(Expr::Assignment { name, value: _ }) => {
+                                assert_eq!(name.lexeme, "x");
+                            }
+                            _ => panic!("Expected assignment expression in while body block"),
+                        }
+                    }
+                    _ => panic!("Expected block statement for while body"),
+                }
+            }
+            _ => panic!("Expected a while statement"),
         }
     }
 }

@@ -65,3 +65,13 @@ if logic_t_and_t and x > 1 {
 } else {
   combined_logic_branch = "logical and comparison false";
 }
+
+// While loop
+counter = 0;
+sum_in_loop = 0;
+while counter < 3 {
+  counter = counter + 1;
+  sum_in_loop = sum_in_loop + counter; // 0+1=1, 1+2=3, 3+3=6
+}
+final_counter_val = counter;
+final_sum_val = sum_in_loop;

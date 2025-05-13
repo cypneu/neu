@@ -126,6 +126,17 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
             (false, None) => Ok(()),
         }
     }
+
+    fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> StmtEvalResult {
+        while self
+            .evaluate(condition)?
+            .as_bool()
+            .ok_or_else(|| RuntimeError::new("Loop condition must evaluate to a boolean"))?
+        {
+            self.execute(body)?;
+        }
+        Ok(())
+    }
 }
 
 impl Interpreter {
@@ -209,17 +220,17 @@ mod tests {
     use crate::frontend::{parser::Parser, scanner::Scanner};
     use crate::neu::Neu;
 
-    fn eval(src: &str, var: &str) -> Value {
+    fn eval(src: &str, var: &str) -> Result<Value, RuntimeError> {
         let mut neu = Neu::new();
         let toks = Scanner::scan(src, &mut neu);
         let stmts = Parser::parse(toks, &mut neu);
 
         let mut interp = Interpreter::new();
         for stmt in stmts {
-            interp.execute(&stmt).unwrap();
+            interp.execute(&stmt)?;
         }
         let tok = Token::new(var.to_string(), None, 0);
-        interp.environment.get(&tok).unwrap().clone()
+        Ok(interp.environment.get(&tok).unwrap().clone())
     }
 
     #[test]
@@ -232,87 +243,142 @@ mod tests {
         ];
 
         for (expr, expected) in cases {
-            let src = format!("x = {};", expr);
-            let got = eval(&src, "x");
+            let src = format!("x = {};;", expr);
+            let got = eval(&src, "x").unwrap();
             assert_eq!(got, *expected, "evaluating `{}`", expr);
         }
     }
 
     #[test]
     fn logical_and_evaluation() {
-        assert_eq!(eval("x = true and true;", "x"), Value::Boolean(true));
-        assert_eq!(eval("x = true and false;", "x"), Value::Boolean(false));
-        assert_eq!(eval("x = false and true;", "x"), Value::Boolean(false));
-        assert_eq!(eval("x = false and false;", "x"), Value::Boolean(false));
+        assert_eq!(
+            eval("x = true and true;", "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval("x = true and false;", "x").unwrap(),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval("x = false and true;", "x").unwrap(),
+            Value::Boolean(false)
+        );
+        assert_eq!(
+            eval("x = false and false;", "x").unwrap(),
+            Value::Boolean(false)
+        );
     }
 
     #[test]
     fn logical_or_evaluation() {
-        assert_eq!(eval("x = true or true;", "x"), Value::Boolean(true));
-        assert_eq!(eval("x = true or false;", "x"), Value::Boolean(true));
-        assert_eq!(eval("x = false or true;", "x"), Value::Boolean(true));
-        assert_eq!(eval("x = false or false;", "x"), Value::Boolean(false));
+        assert_eq!(
+            eval("x = true or true;", "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval("x = true or false;", "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval("x = false or true;", "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval("x = false or false;", "x").unwrap(),
+            Value::Boolean(false)
+        );
     }
 
     #[test]
     fn logical_precedence() {
         assert_eq!(
-            eval("x = false or true and false;", "x"),
+            eval("x = false or true and false;", "x").unwrap(),
             Value::Boolean(false)
         );
         assert_eq!(
-            eval("x = true and false or true;", "x"),
+            eval("x = true and false or true;", "x").unwrap(),
             Value::Boolean(true)
         );
     }
 
     #[test]
     fn logical_short_circuit_does_not_evaluate_rhs() {
-        let a = eval("x = false and undefinedVar;", "x");
+        let a = eval("x = false and undefinedVar;", "x").unwrap();
         assert_eq!(a, Value::Boolean(false));
 
-        let b = eval("x = true or undefinedVar;", "x");
+        let b = eval("x = true or undefinedVar;", "x").unwrap();
         assert_eq!(b, Value::Boolean(true));
     }
 
     #[test]
     fn variable_scope() {
-        let src = "
+        let src = r#"
             x = 1;
             {
                 x = 2;
                 y = x;
             }
             z = x;
-        ";
-        assert_eq!(eval(src, "x"), Value::Number(2.0));
+        "#;
+        assert_eq!(eval(src, "x").unwrap(), Value::Number(2.0));
     }
 
     #[test]
     fn if_true_executes_then_branch() {
         assert_eq!(
-            eval("x = 0; if true { x = 1; } else { x = 2; }", "x"),
+            eval("x = 0; if true { x = 1; } else { x = 2; }", "x").unwrap(),
             Value::Number(1.0)
         );
     }
 
     #[test]
     fn else_if_executes_first_true_branch() {
-        let src = "
+        let src = r#"
             x = 0;
             if false  { x = 1; }
             else if false {}
             else if true  { x = 2; }
             else          { x = 3; }
-        ";
-        assert_eq!(eval(src, "x"), Value::Number(2.0));
+        "#;
+        assert_eq!(eval(src, "x").unwrap(), Value::Number(2.0));
     }
 
     #[test]
     fn else_branch_executes_when_condition_false() {
         assert_eq!(
-            eval("x = 0; if false { x = 1; } else { x = 2; }", "x"),
+            eval("x = 0; if false { x = 1; } else { x = 2; }", "x").unwrap(),
             Value::Number(2.0)
+        );
+    }
+
+    #[test]
+    fn while_loop_runs_until_false() {
+        let src = r#"
+        counter = 0;
+        while counter < 3 {
+            counter = counter + 1;
+        }
+    "#;
+        assert_eq!(eval(src, "counter").unwrap(), Value::Number(3.0));
+    }
+
+    #[test]
+    fn while_condition_false_initially() {
+        let src = r#"
+        i = 0;
+        while i > 0 { i = i - 1; }
+    "#;
+        assert_eq!(eval(src, "i").unwrap(), Value::Number(0.0));
+    }
+
+    #[test]
+    fn while_loop_non_boolean_condition() {
+        let err = eval("while 1 { }", "x").unwrap_err();
+        assert!(
+            err.message
+                .contains("Loop condition must evaluate to a boolean"),
+            "unexpected error message: {:?}",
+            err
         );
     }
 }
