@@ -1,11 +1,41 @@
 use crate::frontend::literal::Literal;
+use crate::runtime::callable::CallableObj;
 
-#[derive(Clone, Debug, PartialEq)]
+use std::fmt;
+use std::rc::Rc;
+
+#[derive(Clone)]
 pub enum Value {
     None,
     Boolean(bool),
     String(String),
     Number(f64),
+    Callable(CallableObj),
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::None => write!(f, "None"),
+            Value::Boolean(b) => write!(f, "Boolean({})", b),
+            Value::String(s) => write!(f, "String({:?})", s),
+            Value::Number(n) => write!(f, "Number({})", n),
+            Value::Callable(_) => write!(f, "Callable(<fn>)"),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::None, Value::None) => true,
+            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Callable(a), Value::Callable(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
 }
 
 impl From<Literal> for Value {

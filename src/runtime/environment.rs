@@ -16,12 +16,12 @@ impl Environment {
         }
     }
 
-    pub fn assign(&mut self, name: &Token, val: Value) {
+    pub fn assign(&mut self, name: &str, val: Value) {
         if self.assign_to_enclosing(name, &val) {
             return;
         }
 
-        self.values.insert(name.lexeme.clone(), val);
+        self.values.insert(name.to_string(), val);
     }
 
     pub fn get(&self, name: &Token) -> Result<&Value, RuntimeError> {
@@ -35,9 +35,9 @@ impl Environment {
         }
     }
 
-    fn assign_to_enclosing(&mut self, name: &Token, val: &Value) -> bool {
-        if self.values.contains_key(&name.lexeme) {
-            self.values.insert(name.lexeme.clone(), val.clone());
+    fn assign_to_enclosing(&mut self, name: &str, val: &Value) -> bool {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_string(), val.clone());
             true
         } else if let Some(parent) = self.enclosing.as_mut() {
             parent.assign_to_enclosing(name, val)

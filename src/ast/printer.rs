@@ -55,4 +55,8 @@ impl Visitor<String> for AstPrinter {
     fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> String {
         format!("Left: {:?}, Op: {:?}, Right: {:?}", left, op, right)
     }
+
+    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> String {
+        format!("Callee: {:?}, arguments: {:?}", callee, arguments)
+    }
 }

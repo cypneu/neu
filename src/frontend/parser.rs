@@ -46,6 +46,7 @@ impl<'a> Parser<'a> {
             TokenType::LeftBrace => self.block(),
             TokenType::If => self.if_statement(),
             TokenType::While => self.while_statement(),
+            TokenType::For => self.for_statement(),
             _ => self.expression_statement(),
         };
 
@@ -107,6 +108,43 @@ impl<'a> Parser<'a> {
         let condition = self.or()?;
         let body = self.block()?;
         Ok(Stmt::while_stmt(condition, body))
+    }
+
+    fn for_statement(&mut self) -> ParserResult<Stmt> {
+        self.advance();
+
+        let token = self.peek().clone();
+        let var = self.primary()?;
+        let name = match &var {
+            Expr::Variable { name } => name,
+            _ => return Err(self.error(&token, "Expected loop variable")),
+        };
+
+        self.consume(TokenType::In, "Expected 'in' in for loop")?;
+        let start = self.primary()?;
+        self.consume(TokenType::Dot, "Expected '..' in range for loop")?;
+        self.consume(TokenType::Dot, "Expected '..' in range for loop")?;
+        let end = self.primary()?;
+
+        let mut body = self.block()?;
+
+        let init = Stmt::Expr(Expr::assign(name.clone(), start));
+
+        let lt_token = Token::new("<".into(), None, name.line);
+        let cond = Expr::binary(var.clone(), lt_token, end);
+
+        let plus_token = Token::new("+".into(), None, name.line);
+        let one = Expr::Literal(Literal::Number(1.0));
+        let inc = Stmt::Expr(Expr::assign(
+            name.clone(),
+            Expr::binary(var, plus_token, one),
+        ));
+
+        if let Stmt::Block(stmts) = &mut body {
+            stmts.push(inc);
+        }
+
+        Ok(Stmt::Block(vec![init, Stmt::while_stmt(cond, body)]))
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
@@ -175,7 +213,39 @@ impl<'a> Parser<'a> {
             return Ok(Expr::unary(operator, right));
         }
 
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> ParserResult<Expr> {
+        let mut expr = self.primary()?;
+
+        while self.matches(&[TokenType::LeftParen]) {
+            expr = self.finish_call(expr)?;
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> ParserResult<Expr> {
+        self.advance();
+
+        let mut arguments = Vec::new();
+        if !self.matches(&[TokenType::RightParen]) {
+            loop {
+                if arguments.len() >= 255 {
+                    let token = self.peek().clone();
+                    return Err(self.error(&token, "Can't have more than 255 arguments."));
+                }
+
+                arguments.push(self.or()?);
+                if !self.matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expr::call(callee, arguments))
     }
 
     fn primary(&mut self) -> ParserResult<Expr> {

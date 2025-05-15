@@ -1,7 +1,7 @@
 use crate::frontend::literal::Literal;
 use crate::frontend::token::Token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,
@@ -28,6 +28,10 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        arguments: Vec<Expr>,
+    },
 }
 
 pub trait Visitor<T> {
@@ -38,6 +42,7 @@ pub trait Visitor<T> {
     fn visit_variable_expr(&mut self, name: &Token) -> T;
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> T;
     fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> T;
+    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> T;
 }
 
 impl Expr {
@@ -50,6 +55,7 @@ impl Expr {
             Expr::Variable { name } => visitor.visit_variable_expr(name),
             Expr::Assignment { name, value } => visitor.visit_assignment_expr(name, value),
             Expr::Logical { left, op, right } => visitor.visit_logical_expr(left, op, right),
+            Expr::Call { callee, arguments } => visitor.visit_call_expr(callee, arguments),
         }
     }
 
@@ -80,6 +86,11 @@ impl Expr {
     pub fn logical(left: Expr, op: Token, right: Expr) -> Self {
         let (left, right) = (Box::new(left), Box::new(right));
         Expr::Logical { left, op, right }
+    }
+
+    pub fn call(callee: Expr, arguments: Vec<Expr>) -> Self {
+        let callee = Box::new(callee);
+        Expr::Call { callee, arguments }
     }
 }
 

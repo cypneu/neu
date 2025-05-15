@@ -4,6 +4,7 @@ use crate::ast::{expr, stmt};
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
 use crate::runtime::environment::Environment;
+use crate::runtime::native::register_natives;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
 
@@ -71,7 +72,7 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
 
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
         let value = self.evaluate(expr)?;
-        self.environment.assign(name, value.clone());
+        self.environment.assign(&name.lexeme, value.clone());
         Ok(value)
     }
 
@@ -91,6 +92,31 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
             self.evaluate(right)
         } else {
             Ok(left_val)
+        }
+    }
+
+    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> ExprEvalResult {
+        let callee = self.evaluate(callee)?;
+
+        let mut evaluated_arguments = Vec::new();
+        for argument in arguments {
+            evaluated_arguments.push(self.evaluate(argument)?);
+        }
+
+        match callee {
+            Value::Callable(callee) => {
+                if evaluated_arguments.len() == callee.arity() {
+                    Ok(callee.call(self, evaluated_arguments)?)
+                } else {
+                    let msg = format!(
+                        "Expected {} arguments, but got {}.",
+                        callee.arity(),
+                        arguments.len()
+                    );
+                    Err(RuntimeError::new(&msg))
+                }
+            }
+            _ => Err(RuntimeError::new("Can only call functions.")),
         }
     }
 }
@@ -150,8 +176,11 @@ impl Interpreter {
     }
 
     fn new() -> Self {
-        let environment = Box::new(Environment::new(None));
-        Interpreter { environment }
+        let mut environment = Environment::new(None);
+        register_natives(&mut environment);
+        Interpreter {
+            environment: Box::new(environment),
+        }
     }
 
     fn eval_numeric_binop<T, F>(
