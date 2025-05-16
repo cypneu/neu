@@ -47,6 +47,7 @@ impl<'a> Parser<'a> {
             TokenType::If => self.if_statement(),
             TokenType::While => self.while_statement(),
             TokenType::For => self.for_statement(),
+            TokenType::Fn => self.func_declaration(),
             _ => self.expression_statement(),
         };
 
@@ -145,6 +146,39 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Stmt::Block(vec![init, Stmt::while_stmt(cond, body)]))
+    }
+
+    fn func_declaration(&mut self) -> ParserResult<Stmt> {
+        self.advance();
+        let name = self.consume(TokenType::Identifier, "Expect function name.")?;
+        self.consume(TokenType::LeftParen, "Expected '(' in function declaration")?;
+
+        let mut params = Vec::new();
+        if !self.matches(&[TokenType::RightParen]) {
+            loop {
+                if params.len() >= 255 {
+                    let token = self.peek().clone();
+                    return Err(self.error(&token, "Can't have more than 255 parameters."));
+                }
+
+                let param = self.consume(TokenType::Identifier, "Expect parameter name.")?;
+                params.push(param);
+                if !self.matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            TokenType::RightParen,
+            "Expected ')' in function declaration",
+        )?;
+
+        let body = match self.block()? {
+            Stmt::Block(stmts) => stmts,
+            _ => unreachable!(),
+        };
+        Ok(Stmt::func_declaration(name, params, body))
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {

@@ -1,15 +1,21 @@
 use crate::ast::expr::Expr;
-use crate::ast::stmt::Stmt;
+use crate::ast::stmt::{FunctionDecl, Stmt};
 use crate::ast::{expr, stmt};
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
 use crate::runtime::environment::Environment;
+use crate::runtime::function::Function;
 use crate::runtime::native::register_natives;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+pub type EnvRef = Rc<RefCell<Environment>>;
 
 pub struct Interpreter {
-    pub environment: Box<Environment>,
+    pub environment: EnvRef,
+    pub globals: EnvRef,
 }
 
 type ExprEvalResult = Result<Value, RuntimeError>;
@@ -66,13 +72,16 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
     }
 
     fn visit_variable_expr(&mut self, name: &Token) -> ExprEvalResult {
-        let value = self.environment.get(name)?;
-        Ok(value.clone())
+        let env = self.environment.borrow();
+        let value = env.get(name)?;
+        Ok(value.as_ref().clone())
     }
 
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
         let value = self.evaluate(expr)?;
-        self.environment.assign(&name.lexeme, value.clone());
+        self.environment
+            .borrow_mut()
+            .assign(&name.lexeme, value.clone());
         Ok(value)
     }
 
@@ -129,10 +138,8 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
     }
 
     fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
-        self.push_env();
-        let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
-        self.pop_env();
-        result
+        let parent = Rc::clone(&self.environment);
+        self.execute_block(stmts, Environment::new(Some(parent)))
     }
 
     fn visit_if_stmt(
@@ -163,6 +170,18 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         }
         Ok(())
     }
+
+    fn visit_func_declaration(&mut self, declaration: &Rc<FunctionDecl>) -> StmtEvalResult {
+        let function = Function {
+            declaration: Rc::clone(declaration),
+        };
+        let callable = Rc::new(function);
+        let value = Value::Callable(callable);
+        self.environment
+            .borrow_mut()
+            .assign(&declaration.name.lexeme, value);
+        Ok(())
+    }
 }
 
 impl Interpreter {
@@ -175,11 +194,26 @@ impl Interpreter {
         }
     }
 
+    pub fn execute_block(
+        &mut self,
+        stmts: &[Stmt],
+        environment: Environment,
+    ) -> Result<(), RuntimeError> {
+        self.push_env(environment);
+        let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
+        self.pop_env();
+        result
+    }
+
     fn new() -> Self {
         let mut environment = Environment::new(None);
         register_natives(&mut environment);
+
+        let environment = Rc::new(RefCell::new(environment));
+        let globals = environment.clone();
         Interpreter {
-            environment: Box::new(environment),
+            environment,
+            globals,
         }
     }
 
@@ -232,14 +266,15 @@ impl Interpreter {
         stmt.accept(self)
     }
 
-    fn push_env(&mut self) {
-        let parent = std::mem::replace(&mut self.environment, Box::new(Environment::new(None)));
-        self.environment = Box::new(Environment::new(Some(parent)));
+    fn push_env(&mut self, environment: Environment) {
+        self.environment = Rc::new(RefCell::new(environment));
     }
 
     fn pop_env(&mut self) {
-        let current = std::mem::replace(&mut self.environment, Box::new(Environment::new(None)));
-        self.environment = current.enclosing.expect("no enclosing environment");
+        let mut env = self.environment.borrow_mut();
+        let current = env.enclosing.take().expect("no enclosing environment");
+        drop(env);
+        self.environment = current;
     }
 }
 
@@ -259,7 +294,8 @@ mod tests {
             interp.execute(&stmt)?;
         }
         let tok = Token::new(var.to_string(), None, 0);
-        Ok(interp.environment.get(&tok).unwrap().clone())
+        let env = interp.environment.borrow();
+        Ok(env.get(&tok).unwrap().as_ref().clone())
     }
 
     #[test]

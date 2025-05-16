@@ -1,4 +1,13 @@
 use crate::ast::expr::Expr;
+use crate::frontend::token::Token;
+use std::rc::Rc;
+
+#[derive(Debug)]
+pub struct FunctionDecl {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
+}
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -13,6 +22,7 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
+    Function(Rc<FunctionDecl>),
 }
 
 pub trait Visitor<T> {
@@ -25,6 +35,7 @@ pub trait Visitor<T> {
         else_branch: Option<&Stmt>,
     ) -> T;
     fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> T;
+    fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl>) -> T;
 }
 
 impl Stmt {
@@ -41,6 +52,7 @@ impl Stmt {
                 visitor.visit_if_stmt(condition, then_branch, else_ref)
             }
             Stmt::While { condition, body } => visitor.visit_while_stmt(condition, body),
+            Stmt::Function(func_decl) => visitor.visit_func_declaration(func_decl),
         }
     }
 
@@ -57,5 +69,9 @@ impl Stmt {
             condition,
             body: Box::new(body),
         }
+    }
+
+    pub fn func_declaration(name: Token, params: Vec<Token>, body: Vec<Stmt>) -> Self {
+        Stmt::Function(Rc::new(FunctionDecl { name, params, body }))
     }
 }
