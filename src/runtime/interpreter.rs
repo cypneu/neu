@@ -9,6 +9,7 @@ use crate::runtime::native::register_natives;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
 use std::cell::RefCell;
+use std::ops::ControlFlow;
 use std::rc::Rc;
 
 pub type EnvRef = Rc<RefCell<Environment>>;
@@ -19,7 +20,7 @@ pub struct Interpreter {
 }
 
 type ExprEvalResult = Result<Value, RuntimeError>;
-type StmtEvalResult = Result<(), RuntimeError>;
+type StmtEvalResult = Result<ControlFlow<Value>, RuntimeError>;
 
 impl expr::Visitor<ExprEvalResult> for Interpreter {
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ExprEvalResult {
@@ -134,7 +135,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
     fn visit_expression_stmt(&mut self, expr: &Expr) -> StmtEvalResult {
         let value = self.evaluate(expr)?;
         println!("Expr stmt: {:?}\nValue: {:?}\n", expr, value);
-        Ok(())
+        Ok(ControlFlow::Continue(()))
     }
 
     fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
@@ -156,7 +157,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         match (truth, else_branch) {
             (true, _) => self.execute(then_branch),
             (false, Some(stmt)) => self.execute(stmt),
-            (false, None) => Ok(()),
+            (false, None) => Ok(ControlFlow::Continue(())),
         }
     }
 
@@ -168,7 +169,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         {
             self.execute(body)?;
         }
-        Ok(())
+        Ok(ControlFlow::Continue(()))
     }
 
     fn visit_func_declaration(&mut self, declaration: &Rc<FunctionDecl>) -> StmtEvalResult {
@@ -180,7 +181,17 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         self.environment
             .borrow_mut()
             .assign(&declaration.name.lexeme, value);
-        Ok(())
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn visit_return_stmt(&mut self, value: &Option<Expr>) -> StmtEvalResult {
+        let return_value = if let Some(value) = value {
+            self.evaluate(value)?
+        } else {
+            Value::None
+        };
+
+        Ok(ControlFlow::Break(return_value))
     }
 }
 
@@ -198,10 +209,21 @@ impl Interpreter {
         &mut self,
         stmts: &[Stmt],
         environment: Environment,
-    ) -> Result<(), RuntimeError> {
-        self.push_env(environment);
-        let result = stmts.iter().try_for_each(|stmt| self.execute(stmt));
-        self.pop_env();
+    ) -> Result<ControlFlow<Value>, RuntimeError> {
+        let new_env = Rc::new(RefCell::new(environment));
+        let previous = std::mem::replace(&mut self.environment, new_env);
+
+        let result = (|| {
+            for stmt in stmts {
+                let cf = self.execute(stmt)?;
+                if cf != ControlFlow::Continue(()) {
+                    return Ok(cf);
+                }
+            }
+            Ok(ControlFlow::Continue(()))
+        })();
+
+        self.environment = previous;
         result
     }
 
@@ -264,17 +286,6 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: &Stmt) -> StmtEvalResult {
         stmt.accept(self)
-    }
-
-    fn push_env(&mut self, environment: Environment) {
-        self.environment = Rc::new(RefCell::new(environment));
-    }
-
-    fn pop_env(&mut self) {
-        let mut env = self.environment.borrow_mut();
-        let current = env.enclosing.take().expect("no enclosing environment");
-        drop(env);
-        self.environment = current;
     }
 }
 

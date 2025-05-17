@@ -4,6 +4,7 @@ use crate::runtime::environment::Environment;
 use crate::runtime::interpreter::Interpreter;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
+use std::ops::ControlFlow;
 use std::rc::Rc;
 
 pub struct Function {
@@ -27,7 +28,11 @@ impl Callable for Function {
             environment.assign(&param.lexeme, arg);
         }
 
-        interpreter.execute_block(&self.declaration.body, environment)?;
-        Ok(Value::None)
+        interpreter
+            .execute_block(&self.declaration.body, environment)
+            .map(|cf| match cf {
+                ControlFlow::Continue(_) => Value::None,
+                ControlFlow::Break(value) => value,
+            })
     }
 }

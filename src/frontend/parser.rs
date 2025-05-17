@@ -48,6 +48,7 @@ impl<'a> Parser<'a> {
             TokenType::While => self.while_statement(),
             TokenType::For => self.for_statement(),
             TokenType::Fn => self.func_declaration(),
+            TokenType::Return => self.return_statement(),
             _ => self.expression_statement(),
         };
 
@@ -166,6 +167,7 @@ impl<'a> Parser<'a> {
                 if !self.matches(&[TokenType::Comma]) {
                     break;
                 }
+                self.consume(TokenType::Comma, "Expected a comma after a parameter.")?;
             }
         }
 
@@ -179,6 +181,16 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         };
         Ok(Stmt::func_declaration(name, params, body))
+    }
+
+    fn return_statement(&mut self) -> ParserResult<Stmt> {
+        self.advance();
+        let value = (!self.matches(&[TokenType::Semicolon]))
+            .then(|| self.or())
+            .transpose()?;
+
+        self.consume(TokenType::Semicolon, "Expected ';' after return value.")?;
+        Ok(Stmt::Return { value })
     }
 
     fn expression(&mut self) -> ParserResult<Expr> {
@@ -275,6 +287,7 @@ impl<'a> Parser<'a> {
                 if !self.matches(&[TokenType::Comma]) {
                     break;
                 }
+                self.consume(TokenType::Comma, "Expected a comma after an argument.")?;
             }
         }
 

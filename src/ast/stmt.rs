@@ -23,6 +23,9 @@ pub enum Stmt {
         body: Box<Stmt>,
     },
     Function(Rc<FunctionDecl>),
+    Return {
+        value: Option<Expr>,
+    },
 }
 
 pub trait Visitor<T> {
@@ -36,6 +39,7 @@ pub trait Visitor<T> {
     ) -> T;
     fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> T;
     fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl>) -> T;
+    fn visit_return_stmt(&mut self, value: &Option<Expr>) -> T;
 }
 
 impl Stmt {
@@ -53,6 +57,7 @@ impl Stmt {
             }
             Stmt::While { condition, body } => visitor.visit_while_stmt(condition, body),
             Stmt::Function(func_decl) => visitor.visit_func_declaration(func_decl),
+            Stmt::Return { value } => visitor.visit_return_stmt(value),
         }
     }
 
