@@ -1,6 +1,7 @@
 use crate::ast::stmt::FunctionDecl;
 use crate::runtime::callable::Callable;
 use crate::runtime::environment::Environment;
+use crate::runtime::interpreter::EnvRef;
 use crate::runtime::interpreter::Interpreter;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
@@ -9,6 +10,7 @@ use std::rc::Rc;
 
 pub struct Function {
     pub declaration: Rc<FunctionDecl>,
+    pub closure: EnvRef,
 }
 
 impl Callable for Function {
@@ -21,8 +23,8 @@ impl Callable for Function {
         interpreter: &mut Interpreter,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let globals_ref = Rc::clone(&interpreter.globals);
-        let mut environment = Environment::new(Some(globals_ref));
+        let closure_ref = Rc::clone(&self.closure);
+        let mut environment = Environment::new(Some(closure_ref));
 
         for (param, arg) in self.declaration.params.iter().zip(arguments.into_iter()) {
             environment.assign(&param.lexeme, arg);

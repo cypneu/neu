@@ -173,6 +173,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
     fn visit_func_declaration(&mut self, declaration: &Rc<FunctionDecl>) -> StmtEvalResult {
         let function = Function {
             declaration: Rc::clone(declaration),
+            closure: Rc::clone(&self.environment),
         };
         let callable = Rc::new(function);
         let value = Value::Callable(callable);
