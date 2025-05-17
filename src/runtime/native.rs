@@ -9,8 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct Clock;
 
 impl Callable for Clock {
-    fn arity(&self) -> usize {
-        0
+    fn arity(&self) -> Option<usize> {
+        Some(0)
     }
 
     fn call(&self, _: &mut Interpreter, _: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -24,7 +24,32 @@ impl Callable for Clock {
     }
 }
 
+pub struct Print;
+
+impl Callable for Print {
+    fn arity(&self) -> Option<usize> {
+        None
+    }
+
+    fn call(&self, _: &mut Interpreter, args: Vec<Value>) -> Result<Value, RuntimeError> {
+        use std::io::{self, Write};
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        for (i, val) in args.iter().enumerate() {
+            if i > 0 {
+                write!(handle, " ").unwrap();
+            }
+            write!(handle, "{}", val).unwrap();
+        }
+        writeln!(handle).unwrap();
+        Ok(Value::None)
+    }
+}
+
 pub fn register_natives(env: &mut Environment) {
-    let clock: Rc<dyn Callable> = Rc::new(Clock);
+    let clock = Rc::new(Clock);
     env.assign("clock", Value::Callable(clock));
+
+    let print_fn = Rc::new(Print);
+    env.assign("print", Value::Callable(print_fn));
 }

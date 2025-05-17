@@ -2,11 +2,13 @@
 x = 5 * (3 + 4) % 3;
 y = 1234.45;
 z = x + y;
+print(x, y, z);
 
 // String ops
 s1 = "asdf";
 s2 = "fdas";
 s3 = s1 + s2;
+print(s1, s2, s3);
 
 // Boolean
 a = true;
@@ -20,36 +22,36 @@ x_outer = 5;
     x_inner2 = x_outer + 1;
     x_inner1 = 5;
   }
+  print(x_inner1);
   x3 = x_inner1 + x_outer;
 }
 
 // Branching control flow
 if true {
-  branch_true = "ran-true-branch";
+  print("Hello");
 }
 
 if false {
-  branch_skipped = "you shouldn't see this";
+  print("You shouldn't see this");
 }
 
 if x > 0 {
-  positive_branch = true;
+  print("Positive");
 } else {
-  positive_branch = false;
+  print("Negative");
 }
 
 if x == 2 {
-  nested_A = "x-is-two";
+  print("x-is-two");
   if y < 1000 {
-    nested_B = "y-small";
+    print("y-small");
   } else if y < 1300 {
-    nested_B = "y-medium";
+    print("y-medium");
   } else {
-    nested_B = "y-large";
+    print("y-large");
   }
 } else {
-  nested_A = "x-not-two";
-  nested_B = "no-inner";
+  print("x-not-two");
 }
 
 // Logical operators
@@ -60,21 +62,19 @@ logic_f_and_f = false and false;
 logic_or_combo = logic_t_and_f or logic_f_and_t or logic_t_and_t;
 logic_and_prec = logic_t_and_f or true and logic_t_and_t;
 
-if logic_t_and_t and x > 1 {
-  combined_logic_branch = "logical and comparison true";
+if logic_t_and_t and x > 1 and logic_and_prec {
+  print("logical and comparison true");
 } else {
-  combined_logic_branch = "logical and comparison false";
+  print("logical and comparison false");
 }
 
 // While loop
-counter = 0;
-sum_in_loop = 0;
+counter = 0; sum_in_loop = 0;
 while counter < 3 {
   counter = counter + 1;
-  sum_in_loop = sum_in_loop + counter; // 0+1=1, 1+2=3, 3+3=6
+  sum_in_loop = sum_in_loop + counter;
 }
-final_counter_val = counter;
-final_sum_val = sum_in_loop;
+print(counter, sum_in_loop);
 
 fn add(a, b) { return a + b; }
 
@@ -82,3 +82,4 @@ sum = 0;
 for i in 0..5 {
   sum = add(sum, i);
 }
+print(sum);

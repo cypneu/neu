@@ -44,11 +44,11 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
 
         // Control flow with if / else if / else
         if x > 10 {
-          status = "big";
+          print("big");
         } else if x > 0 {
-          status = "positive";
+          print("positive");
         } else {
-          status = "non-negative";
+          print("non-negtaive");
         }
 
         // While loop
@@ -57,6 +57,7 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
           i = i + 1;
           sum = sum + i;
         }
+        print("sum 1..5 =", sum);
 
         fn add(a, b) { return a + b; }
 
@@ -64,6 +65,7 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
         for i in 0..5 {
           sum = add(sum, i);
         }
+        print("sum 0..4 =", sum);
         ```
 
         Running `cargo run main.neu` would then execute this script.

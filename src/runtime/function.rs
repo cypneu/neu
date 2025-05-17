@@ -12,8 +12,8 @@ pub struct Function {
 }
 
 impl Callable for Function {
-    fn arity(&self) -> usize {
-        self.declaration.params.len()
+    fn arity(&self) -> Option<usize> {
+        Some(self.declaration.params.len())
     }
 
     fn call(

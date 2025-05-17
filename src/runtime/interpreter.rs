@@ -115,15 +115,14 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
 
         match callee {
             Value::Callable(callee) => {
-                if evaluated_arguments.len() == callee.arity() {
-                    Ok(callee.call(self, evaluated_arguments)?)
-                } else {
-                    let msg = format!(
-                        "Expected {} arguments, but got {}.",
-                        callee.arity(),
-                        arguments.len()
-                    );
-                    Err(RuntimeError::new(&msg))
+                let got = evaluated_arguments.len();
+                match callee.arity() {
+                    Some(n) if got == n => Ok(callee.call(self, evaluated_arguments)?),
+                    None => Ok(callee.call(self, evaluated_arguments)?),
+                    Some(n) => {
+                        let msg = format!("Expected {} arguments, but got {}.", n, got);
+                        Err(RuntimeError::new(&msg))
+                    }
                 }
             }
             _ => Err(RuntimeError::new("Can only call functions.")),
@@ -133,8 +132,7 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
 
 impl stmt::Visitor<StmtEvalResult> for Interpreter {
     fn visit_expression_stmt(&mut self, expr: &Expr) -> StmtEvalResult {
-        let value = self.evaluate(expr)?;
-        println!("Expr stmt: {:?}\nValue: {:?}\n", expr, value);
+        self.evaluate(expr)?;
         Ok(ControlFlow::Continue(()))
     }
 

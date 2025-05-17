@@ -4,7 +4,7 @@ use crate::runtime::value::Value;
 use std::rc::Rc;
 
 pub trait Callable {
-    fn arity(&self) -> usize;
+    fn arity(&self) -> Option<usize>;
     fn call(&self, interpreter: &mut Interpreter, args: Vec<Value>) -> Result<Value, RuntimeError>;
 }
 
