@@ -123,10 +123,10 @@ impl<'a> Parser<'a> {
         };
 
         self.consume(TokenType::In, "Expected 'in' in for loop")?;
-        let start = self.primary()?;
+        let start = self.unary()?;
         self.consume(TokenType::Dot, "Expected '..' in range for loop")?;
         self.consume(TokenType::Dot, "Expected '..' in range for loop")?;
-        let end = self.primary()?;
+        let end = self.unary()?;
 
         let mut body = self.block()?;
 
