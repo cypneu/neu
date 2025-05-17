@@ -48,8 +48,8 @@ impl Callable for Print {
 
 pub fn register_natives(env: &mut Environment) {
     let clock = Rc::new(Clock);
-    env.assign("clock", Value::Callable(clock));
+    env.define("clock", Value::Callable(clock));
 
     let print_fn = Rc::new(Print);
-    env.assign("print", Value::Callable(print_fn));
+    env.define("print", Value::Callable(print_fn));
 }

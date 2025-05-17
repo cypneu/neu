@@ -498,4 +498,34 @@ mod tests {
             err
         );
     }
+
+    #[test]
+    fn function_parameter_assignment_is_local_and_shadows_global() {
+        let explicit_shadow_src = r#"
+            global_val = 100;
+
+            fn my_function(shadow_param) {
+                shadow_param = 200;
+                global_val = global_val + shadow_param;
+            }
+
+            outer_shadow_var = 50;
+            fn another_function(outer_shadow_var) {
+                outer_shadow_var = 60;
+            }
+
+            my_function(global_val);
+            another_function(outer_shadow_var);
+        "#;
+        assert_eq!(
+            eval(explicit_shadow_src, "global_val").unwrap(),
+            Value::Number(300.0),
+            "Global variable modified correctly from within a function that has shadowed parameters."
+        );
+        assert_eq!(
+            eval(explicit_shadow_src, "outer_shadow_var").unwrap(),
+            Value::Number(50.0),
+            "Outer variable should not be affected by assignment to a shadowed parameter in a different function."
+        );
+    }
 }

@@ -18,6 +18,10 @@ impl Environment {
         }
     }
 
+    pub fn define(&mut self, name: &str, val: Value) {
+        self.values.insert(name.to_string(), Rc::new(val));
+    }
+
     pub fn assign(&mut self, name: &str, val: Value) {
         let rc_val = Rc::new(val);
         if self.assign_to_enclosing(name, &rc_val) {

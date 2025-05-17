@@ -27,7 +27,7 @@ impl Callable for Function {
         let mut environment = Environment::new(Some(closure_ref));
 
         for (param, arg) in self.declaration.params.iter().zip(arguments.into_iter()) {
-            environment.assign(&param.lexeme, arg);
+            environment.define(&param.lexeme, arg);
         }
 
         interpreter
