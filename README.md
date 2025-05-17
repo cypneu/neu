@@ -57,6 +57,13 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
           i = i + 1;
           sum = sum + i;
         }
+
+        fn add(a, b) { return a + b; }
+
+        sum = 0;
+        for i in 0..5 {
+          sum = add(sum, i);
+        }
         ```
 
         Running `cargo run main.neu` would then execute this script.

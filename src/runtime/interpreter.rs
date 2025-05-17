@@ -457,4 +457,46 @@ mod tests {
             err
         );
     }
+
+    #[test]
+    fn for_loop_sums() {
+        let src = r#"
+            sum = 0;
+            for i in 0..5 {
+                sum = sum + i;    // 0+1+2+3+4 = 10
+            }
+        "#;
+        assert_eq!(eval(src, "sum").unwrap(), Value::Number(10.0));
+    }
+
+    #[test]
+    fn function_call_add() {
+        let src = r#"
+            fn add(a, b) { return a + b; }
+            result = add(2, 3);
+        "#;
+        assert_eq!(eval(src, "result").unwrap(), Value::Number(5.0));
+    }
+
+    #[test]
+    fn recursive_function_fib() {
+        let src = r#"
+            fn fib(n) {
+                if n < 2 { return n; }
+                return fib(n-1) + fib(n-2);
+            }
+            eight = fib(6);    // 8
+        "#;
+        assert_eq!(eval(src, "eight").unwrap(), Value::Number(8.0));
+    }
+
+    #[test]
+    fn arity_mismatch_produces_error() {
+        let err = eval(r#"fn id(x) { return x; } bad = id(1, 2);"#, "bad").unwrap_err();
+        assert!(
+            err.message.contains("Expected 1 arguments"),
+            "unexpected error: {:?}",
+            err
+        );
+    }
 }

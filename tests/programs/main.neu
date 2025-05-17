@@ -75,3 +75,10 @@ while counter < 3 {
 }
 final_counter_val = counter;
 final_sum_val = sum_in_loop;
+
+fn add(a, b) { return a + b; }
+
+sum = 0;
+for i in 0..5 {
+  sum = add(sum, i);
+}
