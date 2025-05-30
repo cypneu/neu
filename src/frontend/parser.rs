@@ -25,6 +25,7 @@ type ParserResult<T> = Result<T, ParseError>;
 pub struct Parser<'a> {
     tokens: Peekable<IntoIter<Token>>,
     neu: &'a mut Neu,
+    function_nesting_depth: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -176,15 +177,22 @@ impl<'a> Parser<'a> {
             "Expected ')' in function declaration",
         )?;
 
+        self.function_nesting_depth += 1;
         let body = match self.block()? {
             Stmt::Block(stmts) => stmts,
             _ => unreachable!(),
         };
+        self.function_nesting_depth -= 1;
+
         Ok(Stmt::func_declaration(name, params, body))
     }
 
     fn return_statement(&mut self) -> ParserResult<Stmt> {
-        self.advance();
+        let token = self.advance();
+        if self.function_nesting_depth == 0 {
+            return Err(self.error(&token, "Return can be used only within a function."));
+        }
+
         let value = (!self.matches(&[TokenType::Semicolon]))
             .then(|| self.or())
             .transpose()?;
@@ -377,7 +385,11 @@ impl<'a> Parser<'a> {
 
     fn new(tokens: Vec<Token>, neu: &'a mut Neu) -> Self {
         let tokens = tokens.into_iter().peekable();
-        Parser { tokens, neu }
+        Parser {
+            tokens,
+            neu,
+            function_nesting_depth: 0,
+        }
     }
 }
 
@@ -581,5 +593,35 @@ mod tests {
             stmts.as_slice(),
             [Stmt::Function(_), Stmt::Expr(Expr::Call { .. })]
         ));
+    }
+
+    #[test]
+    fn disallow_return_at_top_level() {
+        let mut neu = Neu::new();
+        let toks = Scanner::scan("return 1;", &mut neu);
+        let _stmts = Parser::parse(toks, &mut neu);
+        assert!(neu.had_error, "Expected an error for top-level return");
+    }
+
+    #[test]
+    fn allow_return_in_function() {
+        let mut neu = Neu::new();
+        let toks = Scanner::scan("fn foo() { return 1; }", &mut neu);
+        let stmts = Parser::parse(toks, &mut neu);
+        assert!(
+            !neu.had_error,
+            "Did not expect an error for return in function"
+        );
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::Function(decl) => {
+                assert_eq!(decl.body.len(), 1);
+                match &decl.body[0] {
+                    Stmt::Return { value } => assert!(value.is_some()),
+                    _ => panic!("Expected return statement in function body"),
+                }
+            }
+            _ => panic!("Expected function declaration"),
+        }
     }
 }

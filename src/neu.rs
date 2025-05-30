@@ -8,7 +8,7 @@ use std::io::{self, Write};
 
 #[derive(Debug)]
 pub struct Neu {
-    had_error: bool,
+    pub had_error: bool,
     had_runtime_error: bool,
 }
 
