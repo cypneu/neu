@@ -23,7 +23,11 @@ impl<'a, 'b> Scanner<'a, 'b> {
         while let Some(character) = self.advance() {
             let ch = character.into();
             match character {
-                '(' | ')' | '{' | '}' | ',' | '.' | '-' | '+' | ';' | '*' | '%' => {
+                '.' => {
+                    let token = if self.matches('.') { ".." } else { "." };
+                    self.add_token(token.to_string());
+                }
+                '(' | ')' | '{' | '}' | ',' | '-' | '+' | ';' | ':' | '*' | '%' => {
                     self.add_token(ch)
                 }
                 '!' | '=' | '<' | '>' => {

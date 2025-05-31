@@ -1,8 +1,12 @@
+use std::cell::RefCell;
+use std::fmt;
+use std::rc::Rc;
+
 use crate::frontend::literal::Literal;
 use crate::runtime::callable::CallableObj;
 
-use std::fmt;
-use std::rc::Rc;
+use crate::runtime::struct_declaration::StructDeclaration;
+use crate::runtime::struct_instance::StructInstance;
 
 #[derive(Clone)]
 pub enum Value {
@@ -11,6 +15,8 @@ pub enum Value {
     String(String),
     Number(f64),
     Callable(CallableObj),
+    StructDecl(StructDeclaration),
+    StructInstance(Rc<RefCell<StructInstance>>),
 }
 
 impl fmt::Debug for Value {
@@ -21,6 +27,8 @@ impl fmt::Debug for Value {
             Value::String(s) => write!(f, "String({:?})", s),
             Value::Number(n) => write!(f, "Number({})", n),
             Value::Callable(_) => write!(f, "Callable(<fn>)"),
+            Value::StructInstance(rc) => write!(f, "struct {}{{}}", rc.borrow()),
+            Value::StructDecl(s) => write!(f, "{} initializer", s.name),
         }
     }
 }
@@ -33,6 +41,8 @@ impl std::fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Callable(_) => write!(f, "<fn>"),
+            Value::StructInstance(rc) => write!(f, "{}", rc.borrow()),
+            Value::StructDecl(s) => write!(f, "{} initializer", s.name),
         }
     }
 }
@@ -45,6 +55,7 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::Callable(a), Value::Callable(b)) => Rc::ptr_eq(a, b),
+            (Value::StructInstance(a), Value::StructInstance(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }

@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::frontend::token::Token;
 use crate::runtime::interpreter::EnvRef;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 pub struct Environment {
     pub enclosing: Option<EnvRef>,

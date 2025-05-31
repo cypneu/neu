@@ -32,6 +32,19 @@ pub enum Expr {
         callee: Box<Expr>,
         arguments: Vec<Expr>,
     },
+    StructInit {
+        initializer: Box<Expr>,
+        fields: Vec<(Token, Expr)>,
+    },
+    Get {
+        name: Token,
+        expr: Box<Expr>,
+    },
+    Set {
+        name: Token,
+        expr: Box<Expr>,
+        value: Box<Expr>,
+    },
 }
 
 pub trait Visitor<T> {
@@ -43,6 +56,9 @@ pub trait Visitor<T> {
     fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> T;
     fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> T;
     fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> T;
+    fn visit_struct_init_expr(&mut self, initializer: &Expr, fields: &[(Token, Expr)]) -> T;
+    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> T;
+    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> T;
 }
 
 impl Expr {
@@ -56,6 +72,12 @@ impl Expr {
             Expr::Assignment { name, value } => visitor.visit_assignment_expr(name, value),
             Expr::Logical { left, op, right } => visitor.visit_logical_expr(left, op, right),
             Expr::Call { callee, arguments } => visitor.visit_call_expr(callee, arguments),
+            Expr::StructInit {
+                initializer,
+                fields,
+            } => visitor.visit_struct_init_expr(initializer, fields),
+            Expr::Get { name, expr } => visitor.visit_get_expr(name, expr),
+            Expr::Set { name, expr, value } => visitor.visit_set_expr(name, expr, value),
         }
     }
 
@@ -91,6 +113,26 @@ impl Expr {
     pub fn call(callee: Expr, arguments: Vec<Expr>) -> Self {
         let callee = Box::new(callee);
         Expr::Call { callee, arguments }
+    }
+
+    pub fn struct_init(initializer: Expr, fields: Vec<(Token, Expr)>) -> Self {
+        Expr::StructInit {
+            initializer: Box::new(initializer),
+            fields,
+        }
+    }
+
+    pub fn get(expr: Expr, name: Token) -> Self {
+        let expr = Box::new(expr);
+        Expr::Get { name, expr }
+    }
+
+    pub fn set(expr: Box<Expr>, name: Token, value: Expr) -> Self {
+        Expr::Set {
+            name,
+            expr,
+            value: Box::new(value),
+        }
     }
 }
 

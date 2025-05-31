@@ -59,4 +59,19 @@ impl Visitor<String> for AstPrinter {
     fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> String {
         format!("Callee: {:?}, arguments: {:?}", callee, arguments)
     }
+
+    fn visit_struct_init_expr(&mut self, _initializer: &Expr, fields: &[(Token, Expr)]) -> String {
+        format!("Struct init with fields: {:?}", fields)
+    }
+
+    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> String {
+        format!("Get property: {:?}, struct: {:?}", name, expr)
+    }
+
+    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> String {
+        format!(
+            "Set property: {:?}, struct: {:?}, value: {:?}",
+            name, expr, value
+        )
+    }
 }

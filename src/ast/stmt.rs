@@ -1,12 +1,20 @@
+use std::rc::Rc;
+
 use crate::ast::expr::Expr;
 use crate::frontend::token::Token;
-use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct FunctionDecl {
     pub name: Token,
     pub params: Vec<Token>,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug)]
+pub struct StructDecl {
+    pub name: Token,
+    pub fields: Vec<Token>,
+    pub methods: Vec<Rc<FunctionDecl>>,
 }
 
 #[derive(Debug)]
@@ -22,10 +30,11 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
-    Function(Rc<FunctionDecl>),
+    FunctionDecl(Rc<FunctionDecl>),
     Return {
         value: Option<Expr>,
     },
+    StructDecl(StructDecl),
 }
 
 pub trait Visitor<T> {
@@ -40,6 +49,7 @@ pub trait Visitor<T> {
     fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> T;
     fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl>) -> T;
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> T;
+    fn visit_struct_declaration(&mut self, struct_decl: &StructDecl) -> T;
 }
 
 impl Stmt {
@@ -56,8 +66,9 @@ impl Stmt {
                 visitor.visit_if_stmt(condition, then_branch, else_ref)
             }
             Stmt::While { condition, body } => visitor.visit_while_stmt(condition, body),
-            Stmt::Function(func_decl) => visitor.visit_func_declaration(func_decl),
+            Stmt::FunctionDecl(func_decl) => visitor.visit_func_declaration(func_decl),
             Stmt::Return { value } => visitor.visit_return_stmt(value),
+            Stmt::StructDecl(struct_decl) => visitor.visit_struct_declaration(struct_decl),
         }
     }
 
@@ -76,7 +87,19 @@ impl Stmt {
         }
     }
 
-    pub fn func_declaration(name: Token, params: Vec<Token>, body: Vec<Stmt>) -> Self {
-        Stmt::Function(Rc::new(FunctionDecl { name, params, body }))
+    pub fn func_declaration(func_decl: FunctionDecl) -> Self {
+        Stmt::FunctionDecl(Rc::new(func_decl))
+    }
+
+    pub fn struct_declaration(
+        name: Token,
+        fields: Vec<Token>,
+        methods: Vec<Rc<FunctionDecl>>,
+    ) -> Self {
+        Stmt::StructDecl(StructDecl {
+            name,
+            fields,
+            methods,
+        })
     }
 }

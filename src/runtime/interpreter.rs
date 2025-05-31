@@ -1,5 +1,10 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ops::ControlFlow;
+use std::rc::Rc;
+
 use crate::ast::expr::Expr;
-use crate::ast::stmt::{FunctionDecl, Stmt};
+use crate::ast::stmt::{FunctionDecl, Stmt, StructDecl};
 use crate::ast::{expr, stmt};
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
@@ -7,10 +12,12 @@ use crate::runtime::environment::Environment;
 use crate::runtime::function::Function;
 use crate::runtime::native::register_natives;
 use crate::runtime::runtime_error::RuntimeError;
+use crate::runtime::struct_declaration::StructDeclaration;
+use crate::runtime::struct_instance::StructInstance;
 use crate::runtime::value::Value;
-use std::cell::RefCell;
-use std::ops::ControlFlow;
-use std::rc::Rc;
+
+use super::bound_method::BoundMethod;
+use super::callable::CallableObj;
 
 pub type EnvRef = Rc<RefCell<Environment>>;
 
@@ -128,6 +135,61 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
             _ => Err(RuntimeError::new("Can only call functions.")),
         }
     }
+
+    fn visit_struct_init_expr(
+        &mut self,
+        initializer: &Expr,
+        fields: &[(Token, Expr)],
+    ) -> ExprEvalResult {
+        let struct_initializer = self.evaluate(initializer)?;
+        if let Value::StructDecl(struct_decl) = struct_initializer {
+            let mut instance = StructInstance::new(struct_decl);
+            for (name, expr) in fields {
+                let value = self.evaluate(expr)?;
+                instance.set(name, value)?;
+            }
+            Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
+        } else {
+            Err(RuntimeError::new(
+                "Expected a struct type for initialization.",
+            ))
+        }
+    }
+
+    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
+        let struct_instance = self.evaluate(expr)?;
+        if let Value::StructInstance(s) = struct_instance {
+            let value = s.borrow().get(name)?;
+            if let Value::Callable(callable_obj) = value.as_ref() {
+                Ok(Value::Callable(BoundMethod::new(
+                    Value::StructInstance(s.clone()),
+                    Rc::clone(callable_obj),
+                )))
+            } else {
+                Ok(value.as_ref().clone())
+            }
+        } else {
+            Err(RuntimeError::with_token(
+                name,
+                "Only instances have properties.",
+            ))
+        }
+    }
+
+    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> ExprEvalResult {
+        let struct_instance = self.evaluate(expr)?;
+
+        if let Value::StructInstance(s) = struct_instance {
+            let value = self.evaluate(value)?;
+            s.borrow_mut().set(name, value.clone())?;
+            Ok(value)
+        } else {
+            Err(RuntimeError::with_token(
+                name,
+                "Only instances have fields.",
+            ))
+        }
+    }
 }
 
 impl stmt::Visitor<StmtEvalResult> for Interpreter {
@@ -191,6 +253,32 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         };
 
         Ok(ControlFlow::Break(return_value))
+    }
+
+    fn visit_struct_declaration(&mut self, declaration: &StructDecl) -> StmtEvalResult {
+        let mut environment = self.environment.borrow_mut();
+        environment.define(&declaration.name.lexeme, Value::None);
+
+        let mut methods: HashMap<String, CallableObj> = HashMap::new();
+        for method in &declaration.methods {
+            let function = Function {
+                declaration: Rc::clone(method),
+                closure: Rc::clone(&self.environment),
+            };
+            methods.insert(method.name.lexeme.to_string(), Rc::new(function));
+        }
+
+        let struct_decl = Value::StructDecl(StructDeclaration {
+            name: declaration.name.lexeme.to_string(),
+            fields: declaration
+                .fields
+                .iter()
+                .map(|t| t.lexeme.clone())
+                .collect(),
+            methods,
+        });
+        environment.assign(&declaration.name.lexeme, struct_decl);
+        Ok(ControlFlow::Continue(()))
     }
 }
 
