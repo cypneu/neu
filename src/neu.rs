@@ -70,7 +70,10 @@ impl Neu {
             self.report(error.line, "", error.message);
         }
 
-        let statements = Parser::parse(tokens, self);
+        let (statements, parse_errors) = Parser::parse(tokens);
+        for error in parse_errors {
+            self.report(error.token.line, error.location, error.message);
+        }
 
         if self.had_error {
             return;

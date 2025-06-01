@@ -396,12 +396,10 @@ impl Interpreter {
 mod tests {
     use super::*;
     use crate::frontend::{parser::Parser, scanner::Scanner};
-    use crate::neu::Neu;
 
     fn eval(src: &str, var: &str) -> Result<Value, RuntimeError> {
-        let mut neu = Neu::new();
         let (toks, _) = Scanner::scan(src);
-        let stmts = Parser::parse(toks, &mut neu);
+        let (stmts, _) = Parser::parse(toks);
 
         let mut interp = Interpreter::new();
         for stmt in stmts {

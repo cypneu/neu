@@ -6,29 +6,30 @@ use crate::ast::expr::Expr;
 use crate::ast::stmt::{FunctionDecl, Stmt};
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
-use crate::Neu;
 
-const EQUALITY_OPERATORS: [TokenType; 2] = [TokenType::EqualEqual, TokenType::BangEqual];
-const COMPARISON_OPERATORS: [TokenType; 4] = [
+const EQ_OPS: [TokenType; 2] = [TokenType::EqualEqual, TokenType::BangEqual];
+const CMP_OPS: [TokenType; 4] = [
     TokenType::Greater,
     TokenType::GreaterEqual,
     TokenType::Less,
     TokenType::LessEqual,
 ];
-const TERM_OPERATORS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
-const FACTOR_OPERATORS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
-const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
+const TERM_OPS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
+const FACTOR_OPS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
+const UNARY_OPS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
 #[derive(Debug)]
 pub struct ParseError {
-    token: Token,
-    message: String,
+    pub token: Token,
+    pub location: String,
+    pub message: String,
 }
 
 impl ParseError {
-    pub fn new(token: &Token, message: &str) -> Self {
+    pub fn new(token: &Token, location: String, message: &str) -> Self {
         Self {
             message: message.to_string(),
+            location,
             token: token.clone(),
         }
     }
@@ -37,24 +38,24 @@ impl ParseError {
 type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
-pub struct Parser<'a> {
+pub struct Parser {
     tokens: Peekable<IntoIter<Token>>,
-    neu: &'a mut Neu,
     function_nesting_depth: u32,
 }
 
-impl<'a> Parser<'a> {
-    pub fn parse(tokens: Vec<Token>, neu: &'a mut Neu) -> Vec<Stmt> {
-        let mut parser = Parser::new(tokens, neu);
+impl Parser {
+    pub fn parse(tokens: Vec<Token>) -> (Vec<Stmt>, Vec<ParseError>) {
+        let mut parser = Parser::new(tokens);
 
-        let mut statements = Vec::new();
+        let (mut statements, mut errors) = (Vec::new(), Vec::new());
         while !parser.matches(&[TokenType::Eof]) {
-            if let Ok(stmt) = parser.statement() {
-                statements.push(stmt);
+            match parser.statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => errors.push(err),
             }
         }
 
-        statements
+        (statements, errors)
     }
 
     fn statement(&mut self) -> ParseResult<Stmt> {
@@ -321,23 +322,23 @@ impl<'a> Parser<'a> {
     }
 
     fn equality(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        self.binary_expr(Self::comparison, struct_ok, &EQUALITY_OPERATORS)
+        self.binary_expr(Self::comparison, struct_ok, &EQ_OPS)
     }
 
     fn comparison(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        self.binary_expr(Self::term, struct_ok, &COMPARISON_OPERATORS)
+        self.binary_expr(Self::term, struct_ok, &CMP_OPS)
     }
 
     fn term(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        self.binary_expr(Self::factor, struct_ok, &TERM_OPERATORS)
+        self.binary_expr(Self::factor, struct_ok, &TERM_OPS)
     }
 
     fn factor(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        self.binary_expr(Self::unary, struct_ok, &FACTOR_OPERATORS)
+        self.binary_expr(Self::unary, struct_ok, &FACTOR_OPS)
     }
 
     fn unary(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        if self.matches(&UNARY_OPERATORS) {
+        if self.matches(&UNARY_OPS) {
             let operator = self.advance();
             let right = self.unary(struct_ok)?;
             return Ok(Expr::unary(operator, right));
@@ -435,8 +436,7 @@ impl<'a> Parser<'a> {
             TokenType::Eof => " at end".into(),
             _ => format!(" at '{}'", token.lexeme),
         };
-        self.neu.report(token.line, location, message.into());
-        ParseError::new(token, message)
+        ParseError::new(token, location, message)
     }
 
     fn synchronize(&mut self) {
@@ -497,11 +497,10 @@ impl<'a> Parser<'a> {
         self.tokens.peek().unwrap()
     }
 
-    fn new(tokens: Vec<Token>, neu: &'a mut Neu) -> Self {
+    fn new(tokens: Vec<Token>) -> Self {
         let tokens = tokens.into_iter().peekable();
         Parser {
             tokens,
-            neu,
             function_nesting_depth: 0,
         }
     }
@@ -513,9 +512,8 @@ mod tests {
     use crate::frontend::scanner::Scanner;
 
     fn parse_stmts(src: &str) -> Vec<Stmt> {
-        let mut neu = Neu::new();
         let (toks, _) = Scanner::scan(src);
-        Parser::parse(toks, &mut neu)
+        Parser::parse(toks).0
     }
 
     fn parse_expr(src: &str) -> Expr {
@@ -711,19 +709,17 @@ mod tests {
 
     #[test]
     fn disallow_return_at_top_level() {
-        let mut neu = Neu::new();
         let (toks, _) = Scanner::scan("return 1;");
-        let _stmts = Parser::parse(toks, &mut neu);
-        assert!(neu.had_error, "Expected an error for top-level return");
+        let (_stmts, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty(), "Expected an error for top-level return");
     }
 
     #[test]
     fn allow_return_in_function() {
-        let mut neu = Neu::new();
         let (toks, _) = Scanner::scan("fn foo() { return 1; }");
-        let stmts = Parser::parse(toks, &mut neu);
+        let (stmts, errors) = Parser::parse(toks);
         assert!(
-            !neu.had_error,
+            errors.is_empty(),
             "Did not expect an error for return in function"
         );
         assert_eq!(stmts.len(), 1);

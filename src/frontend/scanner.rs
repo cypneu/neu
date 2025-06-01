@@ -420,7 +420,7 @@ mod tests {
     fn error_unterminated_string() {
         let (tokens, scan_errors) = Scanner::scan("\"abc");
         assert!(
-            scan_errors.len() > 0,
+            !scan_errors.is_empty(),
             "Expected error for unterminated string"
         );
         assert_eq!(tokens.len(), 1);
@@ -431,7 +431,7 @@ mod tests {
     fn error_invalid_character() {
         let (tokens, scan_errors) = Scanner::scan("a = @;");
         assert!(
-            scan_errors.len() > 0,
+            !scan_errors.is_empty(),
             "Expected error for invalid character"
         );
         let expected = vec![
