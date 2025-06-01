@@ -31,41 +31,35 @@ Neu is built using Rust, so you'll need the Rust toolchain (including `cargo`) i
         You could create the `main.neu` file mentioned above with the following content:
 
         ```neu
-        x = (10 + 2) * 3 / 4 - 5 % 2;
-        greet = "hello " + "world";
+        // Structs with fields & methods (instance + static)
+        struct Counter {
+          val,
 
-        truth = true and false or !false;
+          fn inc(self) {
+            self.val = self.val + 1;
+          }
 
-        // Block scope
-        outer = 1;
-        {
-          inner = outer + 1;
+          fn add(a, b) {
+            return a + b;
+          }
         }
 
-        // Control flow with if / else if / else
-        if x > 10 {
-          print("big");
-        } else if x > 0 {
-          print("positive");
-        } else {
-          print("non-negtaive");
+        // Closures capture `x`
+        fn make_adder(x) {
+          fn add(y) { return x + y; }
+          return add;
         }
 
-        // While loop
-        i = 0; sum = 0;
-        while i < 5 {
-          i = i + 1;
-          sum = sum + i;
-        }
-        print("sum 1..5 =", sum);
-
-        fn add(a, b) { return a + b; }
+        count = Counter { val: 0 };
+        add5 = make_adder(5);
 
         sum = 0;
-        for i in 0..5 {
-          sum = add(sum, i);
+        for i in 0..3 {
+          sum = Counter.add(sum, i); // call static method through type
+          count.inc();               // mutate instance field via method
         }
-        print("sum 0..4 =", sum);
+
+        print("Counter(", count.val, "), sum =", add5(sum));
         ```
 
         Running `cargo run main.neu` would then execute this script.
