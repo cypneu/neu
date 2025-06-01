@@ -79,7 +79,11 @@ impl Neu {
             return;
         }
 
-        Interpreter::interpret(statements);
+        if let Err(runtime_errors) = Interpreter::interpret(statements) {
+            for error in runtime_errors {
+                self.runtime_error(error);
+            }
+        }
 
         // let mut ast_printer = AstPrinter;
         // println!("{}", ast_printer.print(&ast));

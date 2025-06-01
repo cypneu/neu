@@ -29,182 +29,44 @@ pub struct Interpreter {
 type ExprEvalResult = Result<Value, RuntimeError>;
 type StmtEvalResult = Result<ControlFlow<Value>, RuntimeError>;
 
-impl expr::Visitor<ExprEvalResult> for Interpreter {
-    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ExprEvalResult {
-        let value = self.evaluate(right)?;
+impl Interpreter {
+    pub fn interpret(statements: Vec<Stmt>) -> Result<(), Vec<RuntimeError>> {
+        let mut interpreter = Interpreter::new();
 
-        use TokenType::*;
-        match operator.kind {
-            Minus => {
-                let value = self.expect_number(value, operator)?;
-                Ok(Value::Number(-value))
+        let mut errors = Vec::new();
+        for statement in statements {
+            if let Err(err) = interpreter.execute(&statement) {
+                errors.push(err);
             }
-            Bang => {
-                let value = self.expect_bool(value, operator)?;
-                Ok(Value::Boolean(!value))
-            }
-            _ => unreachable!("Unexpected unary operator"),
         }
-    }
 
-    fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> ExprEvalResult {
-        let left_val = self.evaluate(left)?;
-        let right_val = self.evaluate(right)?;
-
-        use TokenType::*;
-        match operator.kind {
-            Plus => self.eval_plus(left_val, right_val, operator),
-            Minus => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a - b),
-            Slash => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a / b),
-            Star => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a * b),
-            Modulo => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a % b),
-
-            Greater => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a > b),
-            GreaterEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a >= b),
-            Less => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a < b),
-            LessEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a <= b),
-
-            BangEqual => Ok(Value::Boolean(!(left_val == right_val))),
-            EqualEqual => Ok(Value::Boolean(left_val == right_val)),
-
-            _ => unreachable!("Unknown binary operator"),
-        }
-    }
-
-    fn visit_literal_expr(&mut self, value: &Literal) -> ExprEvalResult {
-        Ok(Value::from(value.clone()))
-    }
-
-    fn visit_grouping_expr(&mut self, expr: &Expr) -> ExprEvalResult {
-        self.evaluate(expr)
-    }
-
-    fn visit_variable_expr(&mut self, name: &Token) -> ExprEvalResult {
-        let env = self.environment.borrow();
-        let value = env.get(name)?;
-        Ok(value.as_ref().clone())
-    }
-
-    fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
-        let value = self.evaluate(expr)?;
-        self.environment
-            .borrow_mut()
-            .assign(&name.lexeme, value.clone());
-        Ok(value)
-    }
-
-    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> ExprEvalResult {
-        let left_val = self.evaluate(left)?;
-        let left_bool = left_val
-            .as_bool()
-            .ok_or_else(|| RuntimeError::new("Logical operands must be a boolean."))?;
-
-        let eval_right = if op.kind == TokenType::Or {
-            !left_bool
+        if errors.is_empty() {
+            Ok(())
         } else {
-            left_bool
-        };
-
-        if eval_right {
-            self.evaluate(right)
-        } else {
-            Ok(left_val)
+            Err(errors)
         }
     }
 
-    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> ExprEvalResult {
-        let callee = self.evaluate(callee)?;
-
-        let mut evaluated_arguments = Vec::new();
-        for argument in arguments {
-            evaluated_arguments.push(self.evaluate(argument)?);
-        }
-
-        match callee {
-            Value::Callable(callee) => {
-                let got = evaluated_arguments.len();
-                match callee.arity() {
-                    Some(n) if got == n => Ok(callee.call(self, evaluated_arguments)?),
-                    None => Ok(callee.call(self, evaluated_arguments)?),
-                    Some(n) => {
-                        let msg = format!("Expected {} arguments, but got {}.", n, got);
-                        Err(RuntimeError::new(&msg))
-                    }
-                }
-            }
-            _ => Err(RuntimeError::new("Can only call functions.")),
-        }
-    }
-
-    fn visit_struct_init_expr(
+    pub fn execute_block(
         &mut self,
-        initializer: &Expr,
-        fields: &[(Token, Expr)],
-    ) -> ExprEvalResult {
-        let struct_initializer = self.evaluate(initializer)?;
-        if let Value::StructDecl(struct_decl) = struct_initializer {
-            let mut instance = StructInstance::new(struct_decl);
-            for (name, expr) in fields {
-                let value = self.evaluate(expr)?;
-                instance.set(name, value)?;
-            }
-            Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
-        } else {
-            Err(RuntimeError::new(
-                "Expected a struct type for initialization.",
-            ))
-        }
-    }
+        stmts: &[Stmt],
+        environment: Environment,
+    ) -> Result<ControlFlow<Value>, RuntimeError> {
+        let new_env = Rc::new(RefCell::new(environment));
+        let previous = std::mem::replace(&mut self.environment, new_env);
 
-    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
-        let target = self.evaluate(expr)?;
-        match target {
-            Value::StructInstance(s) => {
-                let value = s.borrow().get(name)?;
-                if let Value::Callable(method) = value.as_ref() {
-                    if let Some(0) = method.as_ref().arity() {
-                        return Err(RuntimeError::with_token(
-                            name,
-                            "Static method cannot be called on an instance.",
-                        ));
-                    }
-                    let bound =
-                        BoundMethod::new(Value::StructInstance(s.clone()), Rc::clone(method));
-                    Ok(Value::Callable(bound))
-                } else {
-                    Ok(value.as_ref().clone())
+        let result = (|| {
+            for stmt in stmts {
+                let cf = self.execute(stmt)?;
+                if cf != ControlFlow::Continue(()) {
+                    return Ok(cf);
                 }
             }
-            Value::StructDecl(decl) => {
-                if let Some(method) = decl.methods.get(&name.lexeme) {
-                    Ok(Value::Callable(Rc::clone(method)))
-                } else {
-                    Err(RuntimeError::with_token(
-                        name,
-                        &format!("Undefined property '{}'.", name.lexeme),
-                    ))
-                }
-            }
-            _ => Err(RuntimeError::with_token(
-                name,
-                "Only structs or struct instances have properties.",
-            )),
-        }
-    }
+            Ok(ControlFlow::Continue(()))
+        })();
 
-    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> ExprEvalResult {
-        let struct_instance = self.evaluate(expr)?;
-
-        if let Value::StructInstance(s) = struct_instance {
-            let value = self.evaluate(value)?;
-            s.borrow_mut().set(name, value.clone())?;
-            Ok(value)
-        } else {
-            Err(RuntimeError::with_token(
-                name,
-                "Only instances have fields.",
-            ))
-        }
+        self.environment = previous;
+        result
     }
 }
 
@@ -298,38 +160,162 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
     }
 }
 
-impl Interpreter {
-    pub fn interpret(statements: Vec<Stmt>) {
-        let mut interpreter = Interpreter::new();
-        for statement in statements {
-            if let Err(err) = interpreter.execute(&statement) {
-                println!("Err: {:?}", err);
+impl expr::Visitor<ExprEvalResult> for Interpreter {
+    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ExprEvalResult {
+        let value = self.evaluate(right)?;
+
+        use TokenType::*;
+        match operator.kind {
+            Minus => {
+                let value = self.expect_number(value, operator)?;
+                Ok(Value::Number(-value))
             }
+            Bang => {
+                let value = self.expect_bool(value, operator)?;
+                Ok(Value::Boolean(!value))
+            }
+            _ => unreachable!("Unexpected unary operator"),
         }
     }
 
-    pub fn execute_block(
-        &mut self,
-        stmts: &[Stmt],
-        environment: Environment,
-    ) -> Result<ControlFlow<Value>, RuntimeError> {
-        let new_env = Rc::new(RefCell::new(environment));
-        let previous = std::mem::replace(&mut self.environment, new_env);
+    fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> ExprEvalResult {
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?;
 
-        let result = (|| {
-            for stmt in stmts {
-                let cf = self.execute(stmt)?;
-                if cf != ControlFlow::Continue(()) {
-                    return Ok(cf);
-                }
-            }
-            Ok(ControlFlow::Continue(()))
-        })();
+        use TokenType::*;
+        match operator.kind {
+            Plus => self.eval_plus(left_val, right_val, operator),
+            Minus => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a - b),
+            Slash => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a / b),
+            Star => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a * b),
+            Modulo => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a % b),
 
-        self.environment = previous;
-        result
+            Greater => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a > b),
+            GreaterEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a >= b),
+            Less => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a < b),
+            LessEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a <= b),
+
+            BangEqual => Ok(Value::Boolean(!(left_val == right_val))),
+            EqualEqual => Ok(Value::Boolean(left_val == right_val)),
+
+            _ => unreachable!("Unknown binary operator"),
+        }
     }
 
+    fn visit_literal_expr(&mut self, value: &Literal) -> ExprEvalResult {
+        Ok(Value::from(value.clone()))
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &Expr) -> ExprEvalResult {
+        self.evaluate(expr)
+    }
+
+    fn visit_variable_expr(&mut self, name: &Token) -> ExprEvalResult {
+        let env = self.environment.borrow();
+        let value = env.get(name)?;
+        Ok(value)
+    }
+
+    fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
+        let value = self.evaluate(expr)?;
+        self.environment
+            .borrow_mut()
+            .assign(&name.lexeme, value.clone());
+        Ok(value)
+    }
+
+    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> ExprEvalResult {
+        let left_val = self.evaluate(left)?;
+        let left_bool = left_val
+            .as_bool()
+            .ok_or_else(|| RuntimeError::new("Logical operands must be a boolean."))?;
+
+        let eval_right = if op.kind == TokenType::Or {
+            !left_bool
+        } else {
+            left_bool
+        };
+
+        if eval_right {
+            self.evaluate(right)
+        } else {
+            Ok(left_val)
+        }
+    }
+
+    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> ExprEvalResult {
+        let callee = self.evaluate(callee)?;
+
+        let mut evaluated_arguments = Vec::new();
+        for argument in arguments {
+            evaluated_arguments.push(self.evaluate(argument)?);
+        }
+
+        match callee {
+            Value::Callable(callee) => {
+                let got = evaluated_arguments.len();
+                match callee.arity() {
+                    Some(n) if got == n => Ok(callee.call(self, evaluated_arguments)?),
+                    None => Ok(callee.call(self, evaluated_arguments)?),
+                    Some(n) => {
+                        let msg = format!("Expected {} arguments, but got {}.", n, got);
+                        Err(RuntimeError::new(&msg))
+                    }
+                }
+            }
+            _ => Err(RuntimeError::new("Can only call functions.")),
+        }
+    }
+
+    fn visit_struct_init_expr(
+        &mut self,
+        initializer: &Expr,
+        fields: &[(Token, Expr)],
+    ) -> ExprEvalResult {
+        let struct_initializer = self.evaluate(initializer)?;
+        if let Value::StructDecl(struct_decl) = struct_initializer {
+            let mut instance = StructInstance::new(struct_decl);
+            for (name, expr) in fields {
+                let value = self.evaluate(expr)?;
+                instance.set(name, value)?;
+            }
+            Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
+        } else {
+            Err(RuntimeError::new(
+                "Expected a struct type for initialization.",
+            ))
+        }
+    }
+
+    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
+        let target = self.evaluate(expr)?;
+        match target {
+            Value::StructInstance(instance) => self.property_from_instance(name, instance),
+            Value::StructDecl(decl) => self.property_from_struct_decl(name, &decl),
+            _ => Err(RuntimeError::with_token(
+                name,
+                "Only structs or struct instances have properties.",
+            )),
+        }
+    }
+
+    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> ExprEvalResult {
+        let struct_instance = self.evaluate(expr)?;
+
+        if let Value::StructInstance(s) = struct_instance {
+            let value = self.evaluate(value)?;
+            s.borrow_mut().set(name, value.clone())?;
+            Ok(value)
+        } else {
+            Err(RuntimeError::with_token(
+                name,
+                "Only instances have fields.",
+            ))
+        }
+    }
+}
+
+impl Interpreter {
     fn new() -> Self {
         let mut environment = Environment::new(None);
         register_natives(&mut environment);
@@ -339,6 +325,46 @@ impl Interpreter {
         Interpreter {
             environment,
             globals,
+        }
+    }
+
+    fn property_from_instance(
+        &self,
+        name: &Token,
+        instance: Rc<RefCell<StructInstance>>,
+    ) -> ExprEvalResult {
+        let value = instance.borrow().get(name)?;
+        match value.as_ref() {
+            Value::Callable(method) => self.bind_instance_method(name, method, instance),
+            _ => Ok(value.as_ref().clone()),
+        }
+    }
+
+    fn property_from_struct_decl(&self, name: &Token, decl: &StructDeclaration) -> ExprEvalResult {
+        decl.methods
+            .get(&name.lexeme)
+            .map(|m| Value::Callable(Rc::clone(m)))
+            .ok_or_else(|| {
+                RuntimeError::with_token(name, &format!("Undefined property '{}'.", name.lexeme))
+            })
+    }
+
+    fn bind_instance_method(
+        &self,
+        name: &Token,
+        method: &CallableObj,
+        receiver: Rc<RefCell<StructInstance>>,
+    ) -> ExprEvalResult {
+        if method.arity() == Some(0) {
+            Err(RuntimeError::with_token(
+                name,
+                "Static method cannot be called on an instance.",
+            ))
+        } else {
+            Ok(Value::Callable(BoundMethod::new(
+                Value::StructInstance(receiver),
+                Rc::clone(method),
+            )))
         }
     }
 
@@ -407,7 +433,7 @@ mod tests {
         }
         let tok = Token::new(TokenType::Identifier, var.to_string(), None, 0);
         let env = interp.environment.borrow();
-        Ok(env.get(&tok).unwrap().as_ref().clone())
+        Ok(env.get(&tok).unwrap())
     }
 
     #[test]

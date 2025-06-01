@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::frontend::token::Token;
 use crate::runtime::interpreter::EnvRef;
@@ -8,7 +7,7 @@ use crate::runtime::value::Value;
 
 pub struct Environment {
     pub enclosing: Option<EnvRef>,
-    values: HashMap<String, Rc<Value>>,
+    values: HashMap<String, Value>,
 }
 
 impl Environment {
@@ -20,11 +19,11 @@ impl Environment {
     }
 
     pub fn define(&mut self, name: &str, val: Value) {
-        self.values.insert(name.to_string(), Rc::new(val));
+        self.values.insert(name.to_string(), val);
     }
 
     pub fn assign(&mut self, name: &str, val: Value) {
-        let rc_val = Rc::new(val);
+        let rc_val = val;
         if self.assign_to_enclosing(name, &rc_val) {
             return;
         }
@@ -32,9 +31,9 @@ impl Environment {
         self.values.insert(name.to_string(), rc_val);
     }
 
-    pub fn get(&self, name: &Token) -> Result<Rc<Value>, RuntimeError> {
+    pub fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
         if let Some(v) = self.values.get(&name.lexeme) {
-            Ok(Rc::clone(v))
+            Ok(v.clone())
         } else if let Some(parent) = &self.enclosing {
             parent.borrow().get(name)
         } else {
@@ -43,9 +42,9 @@ impl Environment {
         }
     }
 
-    fn assign_to_enclosing(&mut self, name: &str, val: &Rc<Value>) -> bool {
+    fn assign_to_enclosing(&mut self, name: &str, val: &Value) -> bool {
         if self.values.contains_key(name) {
-            self.values.insert(name.to_string(), Rc::clone(val));
+            self.values.insert(name.to_string(), val.clone());
             true
         } else if let Some(parent) = &self.enclosing {
             parent.borrow_mut().assign_to_enclosing(name, val)
