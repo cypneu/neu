@@ -48,8 +48,8 @@ impl Parser {
         let mut parser = Parser::new(tokens);
 
         let (mut statements, mut errors) = (Vec::new(), Vec::new());
-        while !parser.matches(&[TokenType::Eof]) {
-            match parser.statement() {
+        while !parser.check(TokenType::Eof) {
+            match parser.declaration() {
                 Ok(stmt) => statements.push(stmt),
                 Err(err) => errors.push(err),
             }
@@ -57,24 +57,31 @@ impl Parser {
 
         (statements, errors)
     }
+}
 
-    fn statement(&mut self) -> ParseResult<Stmt> {
+impl Parser {
+    fn declaration(&mut self) -> ParseResult<Stmt> {
         let result = match self.peek().kind {
-            TokenType::LeftBrace => self.block(),
-            TokenType::If => self.if_statement(),
-            TokenType::While => self.while_statement(),
-            TokenType::For => self.for_statement(),
             TokenType::Struct => self.struct_declaration(),
             TokenType::Fn => self.function_declaration(),
-            TokenType::Return => self.return_statement(),
-            _ => self.expression_statement(),
+            _ => self.statement(),
         };
 
         if result.is_err() {
             self.synchronize();
         }
-
         result
+    }
+
+    fn statement(&mut self) -> ParseResult<Stmt> {
+        match self.peek().kind {
+            TokenType::LeftBrace => self.block(),
+            TokenType::If => self.if_statement(),
+            TokenType::While => self.while_statement(),
+            TokenType::For => self.for_statement(),
+            TokenType::Return => self.return_statement(),
+            _ => self.expression_statement(),
+        }
     }
 
     fn expression_statement(&mut self) -> ParseResult<Stmt> {
@@ -87,13 +94,11 @@ impl Parser {
     }
 
     fn block(&mut self) -> ParseResult<Stmt> {
-        self.advance();
+        self.consume(TokenType::LeftBrace, "Expected '{' to start a block.")?;
         let mut statements = Vec::new();
 
-        while !self.matches(&[TokenType::RightBrace, TokenType::Eof]) {
-            if let Ok(stmt) = self.statement() {
-                statements.push(stmt);
-            }
+        while !self.check_any(&[TokenType::RightBrace, TokenType::Eof]) {
+            statements.push(self.declaration()?);
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after block")?;
@@ -101,39 +106,37 @@ impl Parser {
     }
 
     fn if_statement(&mut self) -> ParseResult<Stmt> {
-        self.advance();
+        self.consume(TokenType::If, "Expected 'if'.")?;
         let condition = self.or(false)?;
         let then_branch = self.block()?;
-        let else_branch = self.else_branch()?;
-        Ok(Stmt::if_stmt(condition, then_branch, else_branch))
-    }
 
-    fn else_branch(&mut self) -> ParseResult<Option<Stmt>> {
-        if !self.matches(&[TokenType::Else]) {
-            return Ok(None);
-        }
-
-        self.advance();
-
-        let branch = if self.peek().kind == TokenType::If {
-            self.if_statement()?
+        let else_branch = if self.consume_if(TokenType::Else) {
+            if self.check(TokenType::If) {
+                Some(Box::new(self.if_statement()?))
+            } else {
+                Some(Box::new(self.block()?))
+            }
         } else {
-            self.block()?
+            None
         };
-        Ok(Some(branch))
+
+        Ok(Stmt::if_stmt(
+            condition,
+            then_branch,
+            else_branch.map(|b| *b),
+        ))
     }
 
     fn while_statement(&mut self) -> ParseResult<Stmt> {
-        self.advance();
+        self.consume(TokenType::While, "Expected 'while'.")?;
         let condition = self.or(false)?;
         let body = self.block()?;
         Ok(Stmt::while_stmt(condition, body))
     }
 
     fn for_statement(&mut self) -> ParseResult<Stmt> {
-        self.advance();
+        let token = self.consume(TokenType::For, "Expeced 'for'.")?;
 
-        let token = self.peek().clone();
         let var = self.primary()?;
         let name = match &var {
             Expr::Variable { name } => name,
@@ -166,42 +169,48 @@ impl Parser {
         Ok(Stmt::Block(vec![init, Stmt::while_stmt(cond, body)]))
     }
 
-    fn struct_declaration(&mut self) -> ParseResult<Stmt> {
-        self.advance();
-        let name = self.consume(TokenType::Identifier, "Expected struct name")?;
+    fn return_statement(&mut self) -> ParseResult<Stmt> {
+        let keyword = self.consume(TokenType::Return, "Expected 'return'.")?;
+        if self.function_nesting_depth == 0 {
+            return Err(self.error(&keyword, "Return can be used only within a function."));
+        }
 
+        let value = if !self.check(TokenType::Semicolon) {
+            Some(self.or(true)?)
+        } else {
+            None
+        };
+
+        self.consume(TokenType::Semicolon, "Expected ';' after return value.")?;
+        Ok(Stmt::Return { value })
+    }
+
+    fn struct_declaration(&mut self) -> ParseResult<Stmt> {
+        self.consume(TokenType::Struct, "Expected 'struct'.")?;
+        let name = self.consume(TokenType::Identifier, "Expected struct name")?;
         self.consume(TokenType::LeftBrace, "Expected '{' before struct body")?;
 
         let mut fields = Vec::new();
-        let mut last_was_comma = false;
-        while self.matches(&[TokenType::Identifier]) {
+        while self.check(TokenType::Identifier) {
             fields.push(self.advance());
-            last_was_comma = false;
-
-            if self.matches(&[TokenType::Comma]) {
-                self.advance();
-                last_was_comma = true;
+            if self.consume_if(TokenType::Comma) {
                 continue;
             }
-            break;
-        }
 
-        if !fields.is_empty() && self.matches(&[TokenType::Fn]) && !last_was_comma {
-            let token = self.peek().clone();
-            return Err(self.error(
-                &token.clone(),
-                "Expected ',' after last field before method definitions",
-            ));
+            if self.check(TokenType::RightBrace) {
+                break;
+            }
+
+            return Err(self.error(&name, "Expected ',' before method declarations"));
         }
 
         let mut methods = Vec::new();
-        while !self.matches(&[TokenType::RightBrace, TokenType::Eof]) {
+        while !self.check_any(&[TokenType::RightBrace, TokenType::Eof]) {
             let method_decl = self.parse_callable_declaration("method")?;
             methods.push(Rc::new(method_decl));
         }
 
         self.consume(TokenType::RightBrace, "Expected '}' after struct body")?;
-
         Ok(Stmt::struct_declaration(name, fields, methods))
     }
 
@@ -211,25 +220,19 @@ impl Parser {
     }
 
     fn parse_callable_declaration(&mut self, kind: &str) -> Result<FunctionDecl, ParseError> {
-        self.advance();
-
+        self.consume(TokenType::Fn, &format!("Expected '{}'.", kind))?;
         let name = self.consume(TokenType::Identifier, &format!("Expected {} name.", kind))?;
 
         let params = self.parse_parameter_list(kind)?;
 
-        let body = self.parse_callable_body()?;
-
-        Ok(FunctionDecl { name, params, body })
-    }
-
-    fn parse_callable_body(&mut self) -> ParseResult<Vec<Stmt>> {
         self.function_nesting_depth += 1;
         let body = match self.block()? {
             Stmt::Block(stmts) => stmts,
             _ => unreachable!(),
         };
         self.function_nesting_depth -= 1;
-        Ok(body)
+
+        Ok(FunctionDecl { name, params, body })
     }
 
     fn parse_parameter_list(&mut self, kind: &str) -> ParseResult<Vec<Token>> {
@@ -239,20 +242,17 @@ impl Parser {
         )?;
 
         let mut params = Vec::new();
-
-        if !self.matches(&[TokenType::RightParen]) {
+        if !self.check(TokenType::RightParen) {
             loop {
                 if params.len() >= 255 {
                     let token = self.peek().clone();
                     return Err(self.error(&token, "Can't have more than 255 parameters."));
                 }
 
-                let param = self.consume(TokenType::Identifier, "Expect parameter name.")?;
-                params.push(param);
-                if !self.matches(&[TokenType::Comma]) {
+                params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
+                if !self.consume_if(TokenType::Comma) {
                     break;
                 }
-                self.consume(TokenType::Comma, "Expected a comma after a parameter.")?;
             }
         }
 
@@ -262,28 +262,16 @@ impl Parser {
         )?;
         Ok(params)
     }
+}
 
-    fn return_statement(&mut self) -> ParseResult<Stmt> {
-        let token = self.advance();
-        if self.function_nesting_depth == 0 {
-            return Err(self.error(&token, "Return can be used only within a function."));
-        }
-
-        let value = (!self.matches(&[TokenType::Semicolon]))
-            .then(|| self.or(true))
-            .transpose()?;
-
-        self.consume(TokenType::Semicolon, "Expected ';' after return value.")?;
-        Ok(Stmt::Return { value })
-    }
-
+impl Parser {
     fn expression(&mut self) -> ParseResult<Expr> {
         self.assignment()
     }
 
     fn assignment(&mut self) -> ParseResult<Expr> {
         let lhs = self.or(true)?;
-        if !self.matches(&[TokenType::Equal]) {
+        if !self.check(TokenType::Equal) {
             return Ok(lhs);
         }
 
@@ -300,7 +288,7 @@ impl Parser {
     fn or(&mut self, struct_ok: bool) -> ParseResult<Expr> {
         let mut expr = self.and(struct_ok)?;
 
-        while self.matches(&[TokenType::Or]) {
+        while self.check(TokenType::Or) {
             let op = self.advance();
             let right = self.and(struct_ok)?;
             expr = Expr::logical(expr, op, right);
@@ -312,7 +300,7 @@ impl Parser {
     fn and(&mut self, struct_ok: bool) -> ParseResult<Expr> {
         let mut expr = self.equality(struct_ok)?;
 
-        while self.matches(&[TokenType::And]) {
+        while self.check(TokenType::And) {
             let op = self.advance();
             let right = self.equality(struct_ok)?;
             expr = Expr::logical(expr, op, right)
@@ -338,7 +326,7 @@ impl Parser {
     }
 
     fn unary(&mut self, struct_ok: bool) -> ParseResult<Expr> {
-        if self.matches(&UNARY_OPS) {
+        if self.check_any(&UNARY_OPS) {
             let operator = self.advance();
             let right = self.unary(struct_ok)?;
             return Ok(Expr::unary(operator, right));
@@ -351,37 +339,14 @@ impl Parser {
         let mut expr = self.primary()?;
 
         loop {
-            if self.matches(&[TokenType::LeftParen]) {
+            if self.consume_if(TokenType::LeftParen) {
                 expr = self.finish_call(expr)?;
-            } else if self.matches(&[TokenType::Dot]) {
-                self.advance();
+            } else if self.consume_if(TokenType::Dot) {
                 let name =
                     self.consume(TokenType::Identifier, "Expect property name after '.'.")?;
                 expr = Expr::get(expr, name);
-            } else if struct_ok && self.matches(&[TokenType::LeftBrace]) {
-                self.advance();
-
-                let mut fields = Vec::new();
-                if !self.matches(&[TokenType::RightBrace]) {
-                    loop {
-                        let name = self.consume(
-                            TokenType::Identifier,
-                            "Expected field name in struct literal",
-                        )?;
-                        self.consume(TokenType::Colon, "Expected ':' after field name")?;
-
-                        let value = self.expression()?;
-                        fields.push((name, value));
-
-                        if !self.matches(&[TokenType::Comma]) {
-                            break;
-                        }
-                        self.advance();
-                    }
-                }
-
-                self.consume(TokenType::RightBrace, "Expected '}' after struct literal")?;
-                expr = Expr::struct_init(expr, fields);
+            } else if struct_ok && self.consume_if(TokenType::LeftBrace) {
+                expr = self.struct_literal(expr)?;
             } else {
                 break;
             }
@@ -391,10 +356,8 @@ impl Parser {
     }
 
     fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
-        self.advance();
-
         let mut arguments = Vec::new();
-        if !self.matches(&[TokenType::RightParen]) {
+        if !self.check(TokenType::RightParen) {
             loop {
                 if arguments.len() >= 255 {
                     let token = self.peek().clone();
@@ -402,15 +365,31 @@ impl Parser {
                 }
 
                 arguments.push(self.or(true)?);
-                if !self.matches(&[TokenType::Comma]) {
+                if !self.consume_if(TokenType::Comma) {
                     break;
                 }
-                self.consume(TokenType::Comma, "Expected a comma after an argument.")?;
             }
         }
 
         self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
         Ok(Expr::call(callee, arguments))
+    }
+
+    fn struct_literal(&mut self, initializer: Expr) -> ParseResult<Expr> {
+        let mut fields = Vec::<(Token, Expr)>::new();
+        if !self.check(TokenType::RightBrace) {
+            loop {
+                let name = self.consume(TokenType::Identifier, "Expected field name.")?;
+                self.consume(TokenType::Colon, "Expected ':' after field name.")?;
+                let value = self.or(true)?;
+                fields.push((name, value));
+                if !self.consume_if(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightBrace, "Expected '}' after struct literal.")?;
+        Ok(Expr::struct_init(initializer, fields))
     }
 
     fn primary(&mut self) -> ParseResult<Expr> {
@@ -431,6 +410,27 @@ impl Parser {
         Ok(expr)
     }
 
+    fn binary_expr<F>(
+        &mut self,
+        mut operand: F,
+        struct_ok: bool,
+        operators: &[TokenType],
+    ) -> ParseResult<Expr>
+    where
+        F: FnMut(&mut Self, bool) -> ParseResult<Expr>,
+    {
+        let mut expr = operand(self, struct_ok)?;
+
+        while self.check_any(operators) {
+            let operator = self.advance();
+            let right = operand(self, struct_ok)?;
+            expr = Expr::binary(expr, operator, right)
+        }
+        Ok(expr)
+    }
+}
+
+impl Parser {
     fn error(&mut self, token: &Token, message: &str) -> ParseError {
         let location = match token.kind {
             TokenType::Eof => " at end".into(),
@@ -440,7 +440,7 @@ impl Parser {
     }
 
     fn synchronize(&mut self) {
-        while !self.matches(&[TokenType::Eof]) {
+        while !self.check(TokenType::Eof) {
             match self.peek().kind {
                 TokenType::Semicolon => {
                     self.advance();
@@ -457,25 +457,6 @@ impl Parser {
         }
     }
 
-    fn binary_expr<F>(
-        &mut self,
-        mut operand: F,
-        struct_ok: bool,
-        operators: &[TokenType],
-    ) -> ParseResult<Expr>
-    where
-        F: FnMut(&mut Self, bool) -> ParseResult<Expr>,
-    {
-        let mut expr = operand(self, struct_ok)?;
-
-        while self.matches(operators) {
-            let operator = self.advance();
-            let right = operand(self, struct_ok)?;
-            expr = Expr::binary(expr, operator, right)
-        }
-        Ok(expr)
-    }
-
     fn consume(&mut self, kind: TokenType, message: &str) -> Result<Token, ParseError> {
         if self.peek().kind == kind {
             Ok(self.advance())
@@ -485,8 +466,25 @@ impl Parser {
         }
     }
 
-    fn matches(&mut self, token_types: &[TokenType]) -> bool {
-        token_types.contains(&self.peek().kind)
+    fn consume_if_any(&mut self, kinds: &[TokenType]) -> bool {
+        if kinds.contains(&self.peek().kind) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_if(&mut self, kind: TokenType) -> bool {
+        self.consume_if_any(&[kind])
+    }
+
+    fn check_any(&mut self, kinds: &[TokenType]) -> bool {
+        kinds.contains(&self.peek().kind)
+    }
+
+    fn check(&mut self, kind: TokenType) -> bool {
+        self.peek().kind == kind
     }
 
     fn advance(&mut self) -> Token {
