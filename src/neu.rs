@@ -20,8 +20,13 @@ impl Neu {
         }
     }
 
-    pub fn report(&mut self, line: usize, place: String, message: String) {
-        eprintln!("\x1b[31mError{} [Line {}]\x1b[0m: {}", place, line, message);
+    pub fn report(&mut self, line: usize, place: impl Into<String>, message: String) {
+        eprintln!(
+            "\x1b[31mError{} [Line {}]\x1b[0m: {}",
+            place.into(),
+            line,
+            message
+        );
         self.had_error = true;
     }
 
@@ -60,7 +65,11 @@ impl Neu {
     }
 
     fn run(&mut self, source: String) {
-        let tokens = Scanner::scan(&source, self);
+        let (tokens, scan_errors) = Scanner::scan(&source);
+        for error in scan_errors {
+            self.report(error.line, "", error.message);
+        }
+
         let statements = Parser::parse(tokens, self);
 
         if self.had_error {

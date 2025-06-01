@@ -17,7 +17,7 @@ use crate::runtime::struct_instance::StructInstance;
 use crate::runtime::value::Value;
 
 use super::bound_method::BoundMethod;
-use super::callable::{Callable, CallableObj};
+use super::callable::CallableObj;
 
 pub type EnvRef = Rc<RefCell<Environment>>;
 
@@ -400,7 +400,7 @@ mod tests {
 
     fn eval(src: &str, var: &str) -> Result<Value, RuntimeError> {
         let mut neu = Neu::new();
-        let toks = Scanner::scan(src, &mut neu);
+        let (toks, _) = Scanner::scan(src);
         let stmts = Parser::parse(toks, &mut neu);
 
         let mut interp = Interpreter::new();

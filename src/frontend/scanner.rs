@@ -3,31 +3,36 @@ use std::str::Chars;
 
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
-use crate::Neu;
 
 #[derive(Debug)]
-pub struct Scanner<'a, 'b> {
+pub struct ScanError {
+    pub line: usize,
+    pub message: String,
+}
+
+#[derive(Debug)]
+pub struct Scanner<'a> {
     source: Peekable<Chars<'a>>,
     tokens: Vec<Token>,
-    neu: &'b mut Neu,
+    errors: Vec<ScanError>,
     line: usize,
 }
 
-impl<'a, 'b> Scanner<'a, 'b> {
-    pub fn scan(source: &'a str, neu: &'b mut Neu) -> Vec<Token> {
-        let scanner = Scanner::new(source, neu);
+impl<'a> Scanner<'a> {
+    pub fn scan(source: &'a str) -> (Vec<Token>, Vec<ScanError>) {
+        let scanner = Scanner::new(source);
         scanner.scan_tokens()
     }
 
-    fn scan_tokens(mut self) -> Vec<Token> {
+    fn scan_tokens(mut self) -> (Vec<Token>, Vec<ScanError>) {
         while let Some(character) = self.advance() {
             let ch = character.into();
             match character {
                 '.' => {
                     if self.consume_char_if('.') {
-                        self.add_token(TokenType::DotDot, "..".into());
+                        self.add_token(TokenType::DotDot, "..");
                     } else {
-                        self.add_token(TokenType::Dot, ".".into());
+                        self.add_token(TokenType::Dot, ch);
                     }
                 }
                 '(' => self.add_token(TokenType::LeftParen, ch),
@@ -43,28 +48,28 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 '%' => self.add_token(TokenType::Modulo, ch),
                 '!' => {
                     if self.consume_char_if('=') {
-                        self.add_token(TokenType::BangEqual, "!=".into());
+                        self.add_token(TokenType::BangEqual, "!=");
                     } else {
                         self.add_token(TokenType::Bang, ch);
                     }
                 }
                 '=' => {
                     if self.consume_char_if('=') {
-                        self.add_token(TokenType::EqualEqual, "==".to_string());
+                        self.add_token(TokenType::EqualEqual, "==");
                     } else {
                         self.add_token(TokenType::Equal, ch);
                     }
                 }
                 '<' => {
                     if self.consume_char_if('=') {
-                        self.add_token(TokenType::LessEqual, "<=".to_string());
+                        self.add_token(TokenType::LessEqual, "<=");
                     } else {
                         self.add_token(TokenType::Less, ch);
                     }
                 }
                 '>' => {
                     if self.consume_char_if('=') {
-                        self.add_token(TokenType::GreaterEqual, ">=".to_string());
+                        self.add_token(TokenType::GreaterEqual, ">=");
                     } else {
                         self.add_token(TokenType::Greater, ch);
                     };
@@ -85,8 +90,12 @@ impl<'a, 'b> Scanner<'a, 'b> {
             }
         }
 
-        self.add_token(TokenType::Eof, "".into());
-        self.tokens
+        self.add_token(TokenType::Eof, "");
+        (self.tokens, self.errors)
+    }
+
+    fn error(&mut self, line: usize, message: String) {
+        self.errors.push(ScanError { line, message });
     }
 
     fn scan_string(&mut self) {
@@ -139,15 +148,11 @@ impl<'a, 'b> Scanner<'a, 'b> {
         self.add_token_literal(kind, identifier, literal_opt);
     }
 
-    fn error(&mut self, line: usize, message: String) {
-        self.neu.report(line, "".into(), message);
-    }
-
-    fn new(source: &'a str, neu: &'b mut Neu) -> Self {
+    fn new(source: &'a str) -> Self {
         Scanner {
             source: source.chars().peekable(),
             tokens: Vec::new(),
-            neu,
+            errors: Vec::new(),
             line: 1,
         }
     }
@@ -174,13 +179,18 @@ impl<'a, 'b> Scanner<'a, 'b> {
         buf
     }
 
-    fn add_token(&mut self, kind: TokenType, lexeme: String) {
+    fn add_token(&mut self, kind: TokenType, lexeme: impl Into<String>) {
         self.add_token_literal(kind, lexeme, None);
     }
 
-    fn add_token_literal(&mut self, kind: TokenType, lexeme: String, literal: Option<Literal>) {
+    fn add_token_literal(
+        &mut self,
+        kind: TokenType,
+        lexeme: impl Into<String>,
+        lit: Option<Literal>,
+    ) {
         self.tokens
-            .push(Token::new(kind, lexeme, literal, self.line));
+            .push(Token::new(kind, lexeme.into(), lit, self.line));
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -200,12 +210,6 @@ impl<'a, 'b> Scanner<'a, 'b> {
 mod tests {
     use super::*;
     use crate::frontend::token::TokenType;
-
-    fn scan_source(src: &str) -> (Vec<Token>, Neu) {
-        let mut neu = Neu::new();
-        let tokens = Scanner::scan(src, &mut neu);
-        (tokens, neu)
-    }
 
     fn assert_tokens_properties(
         tokens: &[Token],
@@ -249,14 +253,14 @@ mod tests {
 
     #[test]
     fn empty_source() {
-        let (tokens, _neu) = scan_source("");
+        let (tokens, _scan_errors) = Scanner::scan("");
         assert_tokens_properties(&tokens, &[]);
         assert_eq!(tokens[0].line, 1, "EOF token line number for empty source");
     }
 
     #[test]
     fn single_char_punctuators() {
-        let (tokens, _neu) = scan_source("(){},.-+;*: %");
+        let (tokens, _scan_errors) = Scanner::scan("(){},.-+;*: %");
         let expected = vec![
             (TokenType::LeftParen, "(", None),
             (TokenType::RightParen, ")", None),
@@ -277,7 +281,7 @@ mod tests {
     #[test]
     fn operators_multi_char() {
         let source = "! != = == > >= < <= .. /";
-        let (tokens, _neu) = scan_source(source);
+        let (tokens, _scan_errors) = Scanner::scan(source);
         let expected = vec![
             (TokenType::Bang, "!", None),
             (TokenType::BangEqual, "!=", None),
@@ -295,7 +299,7 @@ mod tests {
 
     #[test]
     fn string_literals() {
-        let (tokens, _neu) = scan_source("\"foo\" \"\" \"hello world\"");
+        let (tokens, _scan_errors) = Scanner::scan("\"foo\" \"\" \"hello world\"");
         let expected = vec![
             (
                 TokenType::String,
@@ -318,7 +322,7 @@ mod tests {
 
     #[test]
     fn number_literals() {
-        let (tokens, _neu) = scan_source("123 123.45 0 0.0");
+        let (tokens, _scan_errors) = Scanner::scan("123 123.45 0 0.0");
         let expected = vec![
             (TokenType::Number, "123", Some(Literal::Number(123.0))),
             (TokenType::Number, "123.45", Some(Literal::Number(123.45))),
@@ -330,7 +334,7 @@ mod tests {
 
     #[test]
     fn number_literal_edge_cases() {
-        let (tokens, _neu) = scan_source(".5 5.");
+        let (tokens, _scan_errors) = Scanner::scan(".5 5.");
         let expected = vec![
             (TokenType::Dot, ".", None),
             (TokenType::Number, "5", Some(Literal::Number(5.0))),
@@ -343,7 +347,7 @@ mod tests {
     #[test]
     fn identifiers() {
         let source = "foo _bar foo_bar F_O_O123 foo1 id";
-        let (tokens, _neu) = scan_source(source);
+        let (tokens, _scan_errors) = Scanner::scan(source);
         let expected = vec![
             (TokenType::Identifier, "foo", None),
             (TokenType::Identifier, "_bar", None),
@@ -358,7 +362,7 @@ mod tests {
     #[test]
     fn keywords() {
         let source = "and struct else false fn for if in none or return this true while";
-        let (tokens, _neu) = scan_source(source);
+        let (tokens, _scan_errors) = Scanner::scan(source);
         let expected = vec![
             (TokenType::And, "and", None),
             (TokenType::Struct, "struct", None),
@@ -381,7 +385,7 @@ mod tests {
     #[test]
     fn comments_are_ignored() {
         let source = "// this is a comment\nident // another comment\n// last line comment";
-        let (tokens, _neu) = scan_source(source);
+        let (tokens, _scan_errors) = Scanner::scan(source);
         let expected = vec![(TokenType::Identifier, "ident", None)];
         assert_tokens_properties(&tokens, &expected);
         assert_eq!(tokens[0].line, 2, "Token 'ident' should be on line 2");
@@ -395,7 +399,7 @@ mod tests {
     #[test]
     fn whitespace_and_line_numbers() {
         let source = "one\n  two //c\n\nthree\n";
-        let (tokens, _neu) = scan_source(source);
+        let (tokens, _scan_errors) = Scanner::scan(source);
         let expected = vec![
             (TokenType::Identifier, "one", None),
             (TokenType::Identifier, "two", None),
@@ -414,16 +418,22 @@ mod tests {
 
     #[test]
     fn error_unterminated_string() {
-        let (tokens, neu) = scan_source("\"abc");
-        assert!(neu.had_error, "Expected error for unterminated string");
+        let (tokens, scan_errors) = Scanner::scan("\"abc");
+        assert!(
+            scan_errors.len() > 0,
+            "Expected error for unterminated string"
+        );
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].kind, TokenType::Eof);
     }
 
     #[test]
     fn error_invalid_character() {
-        let (tokens, neu) = scan_source("a = @;");
-        assert!(neu.had_error, "Expected error for invalid character");
+        let (tokens, scan_errors) = Scanner::scan("a = @;");
+        assert!(
+            scan_errors.len() > 0,
+            "Expected error for invalid character"
+        );
         let expected = vec![
             (TokenType::Identifier, "a", None),
             (TokenType::Equal, "=", None),
@@ -435,11 +445,11 @@ mod tests {
     #[test]
     fn mixed_tokens_sequence() {
         let source = "fn main() {\n  val x = 10.5; // comment\n  return x > 0;\n}";
-        let (tokens, neu) = scan_source(source);
+        let (tokens, scan_errors) = Scanner::scan(source);
         assert!(
-            !neu.had_error,
+            scan_errors.is_empty(),
             "Did not expect errors in mixed sequence. Errors: {:?}",
-            neu.had_error
+            scan_errors
         );
 
         let expected = vec![

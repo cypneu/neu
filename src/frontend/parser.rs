@@ -5,7 +5,6 @@ use std::vec::IntoIter;
 use crate::ast::expr::Expr;
 use crate::ast::stmt::{FunctionDecl, Stmt};
 use crate::frontend::literal::Literal;
-use crate::frontend::parser_error::ParseError;
 use crate::frontend::token::{Token, TokenType};
 use crate::Neu;
 
@@ -19,6 +18,21 @@ const COMPARISON_OPERATORS: [TokenType; 4] = [
 const TERM_OPERATORS: [TokenType; 2] = [TokenType::Minus, TokenType::Plus];
 const FACTOR_OPERATORS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType::Modulo];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
+
+#[derive(Debug)]
+pub struct ParseError {
+    token: Token,
+    message: String,
+}
+
+impl ParseError {
+    pub fn new(token: &Token, message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            token: token.clone(),
+        }
+    }
+}
 
 type ParseResult<T> = Result<T, ParseError>;
 
@@ -500,7 +514,7 @@ mod tests {
 
     fn parse_stmts(src: &str) -> Vec<Stmt> {
         let mut neu = Neu::new();
-        let toks = Scanner::scan(src, &mut neu);
+        let (toks, _) = Scanner::scan(src);
         Parser::parse(toks, &mut neu)
     }
 
@@ -698,7 +712,7 @@ mod tests {
     #[test]
     fn disallow_return_at_top_level() {
         let mut neu = Neu::new();
-        let toks = Scanner::scan("return 1;", &mut neu);
+        let (toks, _) = Scanner::scan("return 1;");
         let _stmts = Parser::parse(toks, &mut neu);
         assert!(neu.had_error, "Expected an error for top-level return");
     }
@@ -706,7 +720,7 @@ mod tests {
     #[test]
     fn allow_return_in_function() {
         let mut neu = Neu::new();
-        let toks = Scanner::scan("fn foo() { return 1; }", &mut neu);
+        let (toks, _) = Scanner::scan("fn foo() { return 1; }");
         let stmts = Parser::parse(toks, &mut neu);
         assert!(
             !neu.had_error,
