@@ -17,7 +17,7 @@ use crate::runtime::struct_instance::StructInstance;
 use crate::runtime::value::Value;
 
 use super::bound_method::BoundMethod;
-use super::callable::CallableObj;
+use super::callable::{Callable, CallableObj};
 
 pub type EnvRef = Rc<RefCell<Environment>>;
 
@@ -157,22 +157,38 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
     }
 
     fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
-        let struct_instance = self.evaluate(expr)?;
-        if let Value::StructInstance(s) = struct_instance {
-            let value = s.borrow().get(name)?;
-            if let Value::Callable(callable_obj) = value.as_ref() {
-                Ok(Value::Callable(BoundMethod::new(
-                    Value::StructInstance(s.clone()),
-                    Rc::clone(callable_obj),
-                )))
-            } else {
-                Ok(value.as_ref().clone())
+        let target = self.evaluate(expr)?;
+        match target {
+            Value::StructInstance(s) => {
+                let value = s.borrow().get(name)?;
+                if let Value::Callable(method) = value.as_ref() {
+                    if let Some(0) = method.as_ref().arity() {
+                        return Err(RuntimeError::with_token(
+                            name,
+                            "Static method cannot be called on an instance.",
+                        ));
+                    }
+                    let bound =
+                        BoundMethod::new(Value::StructInstance(s.clone()), Rc::clone(method));
+                    Ok(Value::Callable(bound))
+                } else {
+                    Ok(value.as_ref().clone())
+                }
             }
-        } else {
-            Err(RuntimeError::with_token(
+            Value::StructDecl(decl) => {
+                if let Some(method) = decl.methods.get(&name.lexeme) {
+                    Ok(Value::Callable(Rc::clone(method)))
+                } else {
+                    Err(RuntimeError::with_token(
+                        name,
+                        &format!("Undefined property '{}'.", name.lexeme),
+                    ))
+                }
+            }
+            _ => Err(RuntimeError::with_token(
                 name,
-                "Only instances have properties.",
-            ))
+                "Only structs or struct instances have properties.",
+            )),
         }
     }
 
