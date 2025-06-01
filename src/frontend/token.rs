@@ -37,7 +37,6 @@ pub enum TokenType {
     None,
     Or,
     Return,
-    Super,
     This,
     True,
     While,
@@ -58,60 +57,12 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(lexeme: String, literal: Option<Literal>, line: usize) -> Self {
+    pub fn new(kind: TokenType, lexeme: String, literal: Option<Literal>, line: usize) -> Self {
         Token {
-            kind: lexeme.as_str().into(),
+            kind,
             lexeme,
             literal,
             line,
-        }
-    }
-}
-
-impl From<&str> for TokenType {
-    fn from(lexeme: &str) -> Self {
-        match lexeme {
-            "(" => TokenType::LeftParen,
-            ")" => TokenType::RightParen,
-            "{" => TokenType::LeftBrace,
-            "}" => TokenType::RightBrace,
-            "," => TokenType::Comma,
-            "." => TokenType::Dot,
-            ".." => TokenType::DotDot,
-            "-" => TokenType::Minus,
-            "+" => TokenType::Plus,
-            "%" => TokenType::Modulo,
-            ":" => TokenType::Colon,
-            ";" => TokenType::Semicolon,
-            "/" => TokenType::Slash,
-            "*" => TokenType::Star,
-            "!" => TokenType::Bang,
-            "!=" => TokenType::BangEqual,
-            "=" => TokenType::Equal,
-            "==" => TokenType::EqualEqual,
-            ">" => TokenType::Greater,
-            ">=" => TokenType::GreaterEqual,
-            "<" => TokenType::Less,
-            "<=" => TokenType::LessEqual,
-            "and" => TokenType::And,
-            "struct" => TokenType::Struct,
-            "else" => TokenType::Else,
-            "false" => TokenType::False,
-            "fn" => TokenType::Fn,
-            "for" => TokenType::For,
-            "if" => TokenType::If,
-            "in" => TokenType::In,
-            "none" => TokenType::None,
-            "or" => TokenType::Or,
-            "return" => TokenType::Return,
-            "super" => TokenType::Super,
-            "this" => TokenType::This,
-            "true" => TokenType::True,
-            "while" => TokenType::While,
-            "" => TokenType::Eof,
-            string if string.starts_with('"') => TokenType::String,
-            num if num.parse::<f64>().is_ok() => TokenType::Number,
-            _ => TokenType::Identifier,
         }
     }
 }

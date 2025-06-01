@@ -407,7 +407,7 @@ mod tests {
         for stmt in stmts {
             interp.execute(&stmt)?;
         }
-        let tok = Token::new(var.to_string(), None, 0);
+        let tok = Token::new(TokenType::Identifier, var.to_string(), None, 0);
         let env = interp.environment.borrow();
         Ok(env.get(&tok).unwrap().as_ref().clone())
     }

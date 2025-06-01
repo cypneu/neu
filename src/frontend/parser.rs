@@ -134,10 +134,10 @@ impl<'a> Parser<'a> {
 
         let init = Stmt::Expr(Expr::assign(name.clone(), start));
 
-        let lt_token = Token::new("<".into(), None, name.line);
+        let lt_token = Token::new(TokenType::Less, "<".into(), None, name.line);
         let cond = Expr::binary(var.clone(), lt_token, end);
 
-        let plus_token = Token::new("+".into(), None, name.line);
+        let plus_token = Token::new(TokenType::Plus, "+".into(), None, name.line);
         let one = Expr::Literal(Literal::Number(1.0));
         let inc = Stmt::Expr(Expr::assign(
             name.clone(),
