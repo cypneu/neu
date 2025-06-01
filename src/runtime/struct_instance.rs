@@ -10,7 +10,7 @@ use super::runtime_error::RuntimeError;
 
 #[derive(Clone)]
 pub struct StructInstance {
-    struct_decl: StructDeclaration,
+    pub struct_decl: StructDeclaration,
     fields: HashMap<String, Rc<Value>>,
 }
 

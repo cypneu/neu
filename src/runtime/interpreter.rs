@@ -273,18 +273,24 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         fields: &[(Token, Expr)],
     ) -> ExprEvalResult {
         let struct_initializer = self.evaluate(initializer)?;
-        if let Value::StructDecl(struct_decl) = struct_initializer {
-            let mut instance = StructInstance::new(struct_decl);
-            for (name, expr) in fields {
-                let value = self.evaluate(expr)?;
-                instance.set(name, value)?;
-            }
-            Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
-        } else {
-            Err(RuntimeError::new(
-                "Expected a struct type for initialization.",
-            ))
+        let Value::StructDecl(struct_decl) = struct_initializer else {
+            let msg = "Expected a struct type for initialization.";
+            return Err(RuntimeError::new(msg));
+        };
+
+        if struct_decl.fields.len() != fields.len() {
+            let msg = "All struct variables must be initialized exactly once.";
+            return Err(RuntimeError::new(msg));
         }
+
+        let mut instance = StructInstance::new(struct_decl);
+
+        for (name, expr) in fields {
+            let value = self.evaluate(expr)?;
+            instance.set(name, value)?;
+        }
+
+        Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
     }
 
     fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
@@ -655,5 +661,133 @@ mod tests {
             Value::Number(50.0),
             "Outer variable should not be affected by assignment to a shadowed parameter in a different function."
         );
+    }
+
+    #[test]
+    fn test_struct_declaration_and_instantiation_empty() {
+        let src = "struct T {} x = T {};";
+        let val = eval(src, "x").unwrap();
+        match val {
+            Value::StructInstance(inst_rc) => {
+                assert_eq!(inst_rc.borrow().struct_decl.name, "T");
+            }
+            _ => panic!("Expected StructInstance, got {:?}", val),
+        }
+    }
+
+    #[test]
+    fn test_struct_instantiation_with_fields_get_set() {
+        let src = r#"
+            struct Point { x, y }
+            p = Point { x:1, y:2 };
+            val_x = p.x;
+            p.y = 3;
+            p.x = 5;
+            val_y = p.y;
+        "#;
+        assert_eq!(eval(src, "val_x").unwrap(), Value::Number(1.0));
+        assert_eq!(eval(src, "val_y").unwrap(), Value::Number(3.0));
+    }
+
+    #[test]
+    fn test_struct_method_call_receiver_as_first_arg() {
+        let src = r#"
+            struct Counter {
+                val,
+                fn increment(self) { self.val = self.val + 1; }
+                fn get(self) { return self.val; }
+            }
+            instance = Counter { val: 10 };
+            instance.increment(); // val becomes 11
+            instance.increment(); // val becomes 12
+            result = instance.get();
+        "#;
+        assert_eq!(eval(src, "result").unwrap(), Value::Number(12.0));
+    }
+
+    #[test]
+    fn test_struct_static_method_call() {
+        let src = r#"
+            struct MathUtils {
+                fn add(a, b) { return a + b; }
+            }
+            sum = MathUtils.add(5, 7);
+        "#;
+        assert_eq!(eval(src, "sum").unwrap(), Value::Number(12.0));
+    }
+
+    #[test]
+    fn error_access_non_existent_field() {
+        let src = "struct S {f} i = S{f:1}; x = i.non_field;";
+        let err = eval(src, "x").unwrap_err();
+        assert!(err.message.contains("Undefined property 'non_field'"));
+    }
+
+    #[test]
+    fn error_set_non_existent_field() {
+        let src = "struct S {f} i = S{f:1}; i.non_field = 2;";
+        let err = eval(src, "x").unwrap_err();
+        assert!(err
+            .message
+            .contains("'non_field' is not a field of struct S"));
+    }
+
+    #[test]
+    fn error_init_non_existent_field() {
+        let src = "struct S {} i = S { non_field: 1 };";
+        let err = eval(src, "i").unwrap_err();
+        assert!(err
+            .message
+            .contains("All struct variables must be initialized exactly once."));
+    }
+
+    #[test]
+    fn error_type_mismatch_add_num_str() {
+        let err = eval("x = 1 + \"s\";", "x").unwrap_err();
+        assert!(err
+            .message
+            .contains("Expected two numbers or two strings for '+' operator"));
+    }
+
+    #[test]
+    fn error_unary_negate_string() {
+        let err = eval("x = -\"s\";", "x").unwrap_err();
+        assert!(err.message.contains("Operand must be a number"));
+    }
+
+    #[test]
+    fn error_logical_operand_not_boolean() {
+        let err = eval("x = 1 and true;", "x").unwrap_err();
+        assert!(err.message.contains("Logical operands must be a boolean."));
+    }
+
+    #[test]
+    fn error_if_condition_not_boolean() {
+        let err = eval("if 1 { x=1; } else {x=2;}", "x").unwrap_err();
+        assert!(err.message.contains("If condition must be a boolean."));
+    }
+
+    #[test]
+    fn error_call_non_callable() {
+        let err = eval("y=10; x = y();", "x").unwrap_err();
+        assert!(err.message.contains("Can only call functions."));
+    }
+
+    #[test]
+    fn error_init_missing_field() {
+        let src = "struct Point {x,y} p = Point {x:1};";
+        let err = eval(src, "p").unwrap_err();
+        assert!(err
+            .message
+            .contains("All struct variables must be initialized exactly once."));
+    }
+
+    #[test]
+    fn error_init_duplicate_field_in_literal() {
+        let src = "struct Point {x,y} p = Point {x:1, y:2, x:3};";
+        let err = eval(src, "p").unwrap_err();
+        assert!(err
+            .message
+            .contains("All struct variables must be initialized exactly once."));
     }
 }

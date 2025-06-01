@@ -83,17 +83,3 @@ for i in 0..5 {
   sum = add(sum, i);
 }
 print(sum);
-
-fn make_counter() {
-  i = 0;
-  fn count() {
-    i = i + 1;
-    print(i);
-  }
-
-  return count;
-}
-
-counter = make_counter();
-counter();
-counter();

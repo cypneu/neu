@@ -191,8 +191,16 @@ impl Parser {
         self.consume(TokenType::LeftBrace, "Expected '{' before struct body")?;
 
         let mut fields = Vec::new();
+        let mut field_names_seen = std::collections::HashSet::new();
+
         while self.check(TokenType::Identifier) {
-            fields.push(self.advance());
+            let field_token = self.advance();
+            if !field_names_seen.insert(field_token.lexeme.clone()) {
+                let msg = format!("Duplicate field name '{}'.", field_token.lexeme);
+                return Err(self.error(&field_token, &msg));
+            }
+
+            fields.push(field_token);
             if self.consume_if(TokenType::Comma) {
                 continue;
             }
@@ -400,7 +408,7 @@ impl Parser {
             TokenType::None => Literal::None.into(),
             TokenType::Number | TokenType::String => token.literal.unwrap().into(),
             TokenType::LeftParen => {
-                let expression = self.expression()?;
+                let expression = self.or(true)?;
                 self.consume(TokenType::RightParen, "Expected ')' after expression")?;
                 Expr::group(expression)
             }
@@ -731,5 +739,189 @@ mod tests {
             }
             _ => panic!("Expected function declaration"),
         }
+    }
+
+    #[test]
+    fn parse_struct_declaration_empty() {
+        let stmts = parse_stmts("struct Foo {}");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::StructDecl(decl) => {
+                assert_eq!(decl.name.lexeme, "Foo");
+                assert!(decl.fields.is_empty());
+                assert!(decl.methods.is_empty());
+            }
+            _ => panic!("Expected StructDecl statement"),
+        }
+    }
+
+    #[test]
+    fn parse_struct_declaration_with_fields() {
+        let stmts = parse_stmts("struct Point { x, y }");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::StructDecl(decl) => {
+                assert_eq!(decl.name.lexeme, "Point");
+                assert_eq!(decl.fields.len(), 2);
+                assert_eq!(decl.fields[0].lexeme, "x");
+                assert_eq!(decl.fields[1].lexeme, "y");
+                assert!(decl.methods.is_empty());
+            }
+            _ => panic!("Expected StructDecl statement"),
+        }
+    }
+
+    #[test]
+    fn parse_struct_declaration_with_methods() {
+        let stmts = parse_stmts("struct Greeter { fn greet() {} fn say(msg) {} }");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::StructDecl(decl) => {
+                assert_eq!(decl.name.lexeme, "Greeter");
+                assert!(decl.fields.is_empty());
+                assert_eq!(decl.methods.len(), 2);
+                assert_eq!(decl.methods[0].name.lexeme, "greet");
+                assert_eq!(decl.methods[1].name.lexeme, "say");
+            }
+            _ => panic!("Expected StructDecl statement"),
+        }
+    }
+
+    #[test]
+    fn parse_struct_declaration_with_fields_and_methods() {
+        let stmts = parse_stmts("struct Data { field1, field2, fn process() {} fn query() {} }");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::StructDecl(decl) => {
+                assert_eq!(decl.name.lexeme, "Data");
+                assert_eq!(decl.fields.len(), 2);
+                assert_eq!(decl.fields[0].lexeme, "field1");
+                assert_eq!(decl.fields[1].lexeme, "field2");
+                assert_eq!(decl.methods.len(), 2);
+                assert_eq!(decl.methods[0].name.lexeme, "process");
+                assert_eq!(decl.methods[1].name.lexeme, "query");
+            }
+            _ => panic!("Expected StructDecl statement"),
+        }
+    }
+
+    #[test]
+    fn parse_struct_init_empty() {
+        let expr = parse_expr("MyStruct {};");
+        match expr {
+            Expr::StructInit {
+                initializer,
+                fields,
+            } => {
+                assert!(
+                    matches!(*initializer, Expr::Variable { name } if name.lexeme == "MyStruct")
+                );
+                assert!(fields.is_empty());
+            }
+            _ => panic!("Expected StructInit expression"),
+        }
+    }
+
+    #[test]
+    fn parse_struct_init_with_fields() {
+        let expr = parse_expr("Point { x: 1, y: \"two\" };");
+        match expr {
+            Expr::StructInit {
+                initializer,
+                fields,
+            } => {
+                assert!(matches!(*initializer, Expr::Variable { name } if name.lexeme == "Point"));
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0.lexeme, "x");
+                assert!(matches!(fields[0].1, Expr::Literal(Literal::Number(_))));
+                assert_eq!(fields[1].0.lexeme, "y");
+                assert!(matches!(fields[1].1, Expr::Literal(Literal::String(_))));
+            }
+            _ => panic!("Expected StructInit expression"),
+        }
+    }
+
+    #[test]
+    fn parse_error_missing_semicolon() {
+        let (toks, _) = Scanner::scan("x = 1");
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0]
+            .message
+            .contains("Expect ';' after expression statement."));
+    }
+
+    #[test]
+    fn parse_max_parameters_allowed() {
+        let params = (0..255)
+            .map(|i| format!("p{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let src = format!("fn test({}) {{}}", params);
+        let (toks, _) = Scanner::scan(&src);
+        let (_, errors) = Parser::parse(toks);
+        assert!(
+            errors.is_empty(),
+            "Should allow 255 parameters. Errors: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn parse_too_many_parameters_error() {
+        let params = (0..256)
+            .map(|i| format!("p{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let src = format!("fn test({}) {{}}", params);
+        let (toks, _) = Scanner::scan(&src);
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0]
+            .message
+            .contains("Can't have more than 255 parameters."));
+    }
+
+    #[test]
+    fn parse_error_struct_field_no_comma_before_method() {
+        let (toks, _) = Scanner::scan("struct Test { field fn method() {} }");
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0]
+            .message
+            .contains("Expected ',' before method declarations"));
+    }
+
+    #[test]
+    fn parse_error_struct_field_repeated_variables() {
+        let (toks, _) = Scanner::scan("struct Test { field, field }");
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0].message.contains("Duplicate field name 'field'."));
+    }
+
+    #[test]
+    fn disallow_assignment_in_if_condition() {
+        let src = "if x = 1 { }";
+        let (toks, _) = Scanner::scan(src);
+        let (_, errors) = Parser::parse(toks);
+        println!("{:?}", errors);
+
+        assert!(
+            !errors.is_empty(),
+            "Expected a parse error for assignment in if condition"
+        );
+    }
+
+    #[test]
+    fn disallow_assignment_in_while_condition() {
+        let src = "while (x = 0) { }";
+        let (toks, _) = Scanner::scan(src);
+        let (_, errors) = Parser::parse(toks);
+
+        assert!(
+            !errors.is_empty(),
+            "Expected a parse error for assignment in while condition"
+        );
     }
 }
