@@ -2,10 +2,10 @@ use crate::ast::stmt::FunctionDecl;
 use crate::runtime::callable::Callable;
 use crate::runtime::environment::Environment;
 use crate::runtime::interpreter::EnvRef;
+use crate::runtime::interpreter::ExecutionFlow;
 use crate::runtime::interpreter::Interpreter;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
-use std::ops::ControlFlow;
 use std::rc::Rc;
 
 pub struct Function {
@@ -31,10 +31,10 @@ impl Callable for Function {
         }
 
         interpreter
-            .execute_block(&self.declaration.body, environment)
+            .execute_callable_body(&self.declaration.body, environment)
             .map(|cf| match cf {
-                ControlFlow::Continue(_) => Value::None,
-                ControlFlow::Break(value) => value,
+                ExecutionFlow::Return(value) => value,
+                _ => Value::None,
             })
     }
 }

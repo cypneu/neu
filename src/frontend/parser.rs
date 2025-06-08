@@ -41,6 +41,7 @@ type ParseResult<T> = Result<T, ParseError>;
 pub struct Parser {
     tokens: Peekable<IntoIter<Token>>,
     function_nesting_depth: u32,
+    loop_nesting_depth: u32,
 }
 
 impl Parser {
@@ -80,6 +81,8 @@ impl Parser {
             TokenType::While => self.while_statement(),
             TokenType::For => self.for_statement(),
             TokenType::Return => self.return_statement(),
+            TokenType::Break => self.break_statement(),
+            TokenType::Continue => self.continue_statement(),
             _ => self.expression_statement(),
         }
     }
@@ -130,43 +133,25 @@ impl Parser {
     fn while_statement(&mut self) -> ParseResult<Stmt> {
         self.consume(TokenType::While, "Expected 'while'.")?;
         let condition = self.or(false)?;
+        self.loop_nesting_depth += 1;
         let body = self.block()?;
+        self.loop_nesting_depth -= 1;
         Ok(Stmt::while_stmt(condition, body))
     }
 
     fn for_statement(&mut self) -> ParseResult<Stmt> {
-        let token = self.consume(TokenType::For, "Expeced 'for'.")?;
-
-        let var = self.primary()?;
-        let name = match &var {
-            Expr::Variable { name } => name,
-            _ => return Err(self.error(&token, "Expected loop variable")),
-        };
-
+        self.consume(TokenType::For, "Expeced 'for'.")?;
+        let var = self.consume(TokenType::Identifier, "Expected loop variable")?;
         self.consume(TokenType::In, "Expected 'in' in for loop")?;
         let start = self.unary(false)?;
         self.consume(TokenType::DotDot, "Expected '..' in range for loop")?;
         let end = self.unary(false)?;
 
-        let mut body = self.block()?;
+        self.loop_nesting_depth += 1;
+        let body = self.block()?;
+        self.loop_nesting_depth -= 1;
 
-        let init = Stmt::Expr(Expr::assign(name.clone(), start));
-
-        let lt_token = Token::new(TokenType::Less, "<".into(), None, name.line);
-        let cond = Expr::binary(var.clone(), lt_token, end);
-
-        let plus_token = Token::new(TokenType::Plus, "+".into(), None, name.line);
-        let one = Expr::Literal(Literal::Number(1.0));
-        let inc = Stmt::Expr(Expr::assign(
-            name.clone(),
-            Expr::binary(var, plus_token, one),
-        ));
-
-        if let Stmt::Block(stmts) = &mut body {
-            stmts.push(inc);
-        }
-
-        Ok(Stmt::Block(vec![init, Stmt::while_stmt(cond, body)]))
+        Ok(Stmt::for_stmt(var, start, end, body))
     }
 
     fn return_statement(&mut self) -> ParseResult<Stmt> {
@@ -183,6 +168,29 @@ impl Parser {
 
         self.consume(TokenType::Semicolon, "Expected ';' after return value.")?;
         Ok(Stmt::Return { value })
+    }
+
+    fn break_statement(&mut self) -> ParseResult<Stmt> {
+        let keyword = self.consume(TokenType::Break, "Expected 'break'.")?;
+        if self.loop_nesting_depth == 0 {
+            return Err(self.error(&keyword, "Break can be used only within a loop."));
+        }
+
+        self.consume(TokenType::Semicolon, "Expected ';' after break statement.")?;
+        Ok(Stmt::Break)
+    }
+
+    fn continue_statement(&mut self) -> ParseResult<Stmt> {
+        let keyword = self.consume(TokenType::Continue, "Expected 'break'.")?;
+        if self.loop_nesting_depth == 0 {
+            return Err(self.error(&keyword, "Continue can be used only within a loop."));
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expected ';' after continue statement.",
+        )?;
+        Ok(Stmt::Continue)
     }
 
     fn struct_declaration(&mut self) -> ParseResult<Stmt> {
@@ -459,7 +467,9 @@ impl Parser {
                 | TokenType::For
                 | TokenType::If
                 | TokenType::While
-                | TokenType::Return => return,
+                | TokenType::Return
+                | TokenType::Continue
+                | TokenType::Break => return,
                 _ => self.advance(),
             };
         }
@@ -508,6 +518,7 @@ impl Parser {
         Parser {
             tokens,
             function_nesting_depth: 0,
+            loop_nesting_depth: 0,
         }
     }
 }
@@ -680,28 +691,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_for_loop_desugars_to_while() {
+    fn parses_for_loop() {
         let stmts = parse_stmts("for i in 0..3 { }");
         assert_eq!(stmts.len(), 1);
-
-        match &stmts[0] {
-            Stmt::Block(outer) => {
-                assert_eq!(outer.len(), 2);
-                assert!(matches!(outer[0], Stmt::Expr(_)));
-
-                if let Stmt::While { condition, body } = &outer[1] {
-                    assert!(matches!(condition, Expr::Binary { .. }));
-                    if let Stmt::Block(inner) = &**body {
-                        assert!(inner.last().is_some_and(|s| matches!(s, Stmt::Expr(_))));
-                    } else {
-                        panic!("expected block in while body");
-                    }
-                } else {
-                    panic!("expected while-stmt");
-                }
-            }
-            _ => panic!("expected outer block generated by for-desugaring"),
-        }
+        assert!(matches!(&stmts[0], Stmt::For { .. }));
     }
 
     #[test]
@@ -923,5 +916,55 @@ mod tests {
             !errors.is_empty(),
             "Expected a parse error for assignment in while condition"
         );
+    }
+
+    #[test]
+    fn parses_break_statement_in_loop() {
+        let stmts = parse_stmts("while true { break; }");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::While { body, .. } => match &**body {
+                Stmt::Block(block_stmts) => {
+                    assert_eq!(block_stmts.len(), 1);
+                    assert!(matches!(block_stmts[0], Stmt::Break));
+                }
+                _ => panic!("Expected block statement for while body"),
+            },
+            _ => panic!("Expected a while statement"),
+        }
+    }
+
+    #[test]
+    fn parses_continue_statement_in_loop() {
+        let stmts = parse_stmts("for i in 0..5 { continue; }");
+        assert_eq!(stmts.len(), 1);
+        match &stmts[0] {
+            Stmt::For { body, .. } => match &**body {
+                Stmt::Block(block_stmts) => {
+                    assert!(matches!(block_stmts[0], Stmt::Continue));
+                }
+                _ => panic!("Expected block statement for while body"),
+            },
+            _ => panic!("Expected a For statement"),
+        }
+    }
+    #[test]
+    fn error_on_break_outside_loop() {
+        let (toks, _) = Scanner::scan("break;");
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0]
+            .message
+            .contains("Break can be used only within a loop."));
+    }
+
+    #[test]
+    fn error_on_continue_outside_loop() {
+        let (toks, _) = Scanner::scan("continue;");
+        let (_, errors) = Parser::parse(toks);
+        assert!(!errors.is_empty());
+        assert!(errors[0]
+            .message
+            .contains("Continue can be used only within a loop."));
     }
 }

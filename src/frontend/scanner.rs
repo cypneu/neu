@@ -142,6 +142,8 @@ impl<'a> Scanner<'a> {
             "this" => (TokenType::This, None),
             "true" => (TokenType::True, Some(Literal::Boolean(true))),
             "while" => (TokenType::While, None),
+            "continue" => (TokenType::Continue, None),
+            "break" => (TokenType::Break, None),
             _ => (TokenType::Identifier, None),
         };
 

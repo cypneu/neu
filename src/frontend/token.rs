@@ -40,6 +40,8 @@ pub enum TokenType {
     This,
     True,
     While,
+    Break,
+    Continue,
 
     Identifier,
     String,

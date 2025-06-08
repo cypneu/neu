@@ -1,0 +1,41 @@
+print("Testing break:");
+
+i = 0;
+while i < 10 {
+  if i == 3 {
+    break;
+  }
+  print(i);
+  i = i + 1;
+}
+print("Broke at i =", i);
+
+sum = 0;
+for j in 0..10 {
+  if j == 5 {
+    break;
+  }
+  sum = sum + j;
+}
+print("for loop broke at j=5, sum is", sum);
+
+print("Testing continue:");
+
+k = 0;
+while k < 5 {
+  k = k + 1;
+  if k == 3 {
+    continue;
+  }
+  print(k);
+}
+print("while loop finished");
+
+sum_for = 0;
+for n in 0..6 {
+  if n % 2 == 0 {
+    continue;
+  }
+  sum_for = sum_for + n;
+}
+print("for loop with continue sum is", sum_for);

@@ -1,0 +1,13 @@
+Testing break:
+0
+1
+2
+Broke at i = 3
+for loop broke at j=5, sum is 10
+Testing continue:
+1
+2
+4
+5
+while loop finished
+for loop with continue sum is 9

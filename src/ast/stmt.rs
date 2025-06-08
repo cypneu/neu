@@ -30,11 +30,19 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
+    For {
+        var: Token,
+        start: Expr,
+        end: Expr,
+        body: Box<Stmt>,
+    },
     FunctionDecl(Rc<FunctionDecl>),
     Return {
         value: Option<Expr>,
     },
     StructDecl(StructDecl),
+    Break,
+    Continue,
 }
 
 pub trait Visitor<T> {
@@ -47,9 +55,12 @@ pub trait Visitor<T> {
         else_branch: Option<&Stmt>,
     ) -> T;
     fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> T;
+    fn visit_for_stmt(&mut self, var: &Token, start: &Expr, end: &Expr, body: &Stmt) -> T;
     fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl>) -> T;
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> T;
     fn visit_struct_declaration(&mut self, struct_decl: &StructDecl) -> T;
+    fn visit_break_stmt(&mut self) -> T;
+    fn visit_continue_stmt(&mut self) -> T;
 }
 
 impl Stmt {
@@ -66,9 +77,17 @@ impl Stmt {
                 visitor.visit_if_stmt(condition, then_branch, else_ref)
             }
             Stmt::While { condition, body } => visitor.visit_while_stmt(condition, body),
+            Stmt::For {
+                var,
+                start,
+                end,
+                body,
+            } => visitor.visit_for_stmt(var, start, end, body),
             Stmt::FunctionDecl(func_decl) => visitor.visit_func_declaration(func_decl),
             Stmt::Return { value } => visitor.visit_return_stmt(value),
             Stmt::StructDecl(struct_decl) => visitor.visit_struct_declaration(struct_decl),
+            Stmt::Break => visitor.visit_break_stmt(),
+            Stmt::Continue => visitor.visit_continue_stmt(),
         }
     }
 
@@ -101,5 +120,14 @@ impl Stmt {
             fields,
             methods,
         })
+    }
+
+    pub fn for_stmt(var: Token, start: Expr, end: Expr, body: Stmt) -> Self {
+        Stmt::For {
+            var,
+            start,
+            end,
+            body: Box::new(body),
+        }
     }
 }

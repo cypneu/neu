@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use crate::ast::expr::Expr;
@@ -26,8 +25,15 @@ pub struct Interpreter {
     pub globals: EnvRef,
 }
 
+pub enum ExecutionFlow {
+    Normal,
+    Break,
+    Continue,
+    Return(Value),
+}
+
 type ExprEvalResult = Result<Value, RuntimeError>;
-type StmtEvalResult = Result<ControlFlow<Value>, RuntimeError>;
+type StmtEvalResult = Result<ExecutionFlow, RuntimeError>;
 
 impl Interpreter {
     pub fn interpret(statements: Vec<Stmt>) -> Result<(), Vec<RuntimeError>> {
@@ -47,38 +53,24 @@ impl Interpreter {
         }
     }
 
-    pub fn execute_block(
+    pub fn execute_callable_body(
         &mut self,
         stmts: &[Stmt],
         environment: Environment,
-    ) -> Result<ControlFlow<Value>, RuntimeError> {
+    ) -> StmtEvalResult {
         let new_env = Rc::new(RefCell::new(environment));
-        let previous = std::mem::replace(&mut self.environment, new_env);
-
-        let result = (|| {
-            for stmt in stmts {
-                let cf = self.execute(stmt)?;
-                if cf != ControlFlow::Continue(()) {
-                    return Ok(cf);
-                }
-            }
-            Ok(ControlFlow::Continue(()))
-        })();
-
-        self.environment = previous;
-        result
+        self.with_new_environment(new_env, |interpreter| interpreter.execute_statements(stmts))
     }
 }
 
 impl stmt::Visitor<StmtEvalResult> for Interpreter {
     fn visit_expression_stmt(&mut self, expr: &Expr) -> StmtEvalResult {
         self.evaluate(expr)?;
-        Ok(ControlFlow::Continue(()))
+        Ok(ExecutionFlow::Normal)
     }
 
     fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
-        let parent = Rc::clone(&self.environment);
-        self.execute_block(stmts, Environment::new(Some(parent)))
+        self.execute_statements(stmts)
     }
 
     fn visit_if_stmt(
@@ -95,19 +87,74 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         match (truth, else_branch) {
             (true, _) => self.execute(then_branch),
             (false, Some(stmt)) => self.execute(stmt),
-            (false, None) => Ok(ControlFlow::Continue(())),
+            (false, None) => Ok(ExecutionFlow::Normal),
         }
     }
 
     fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> StmtEvalResult {
-        while self
-            .evaluate(condition)?
-            .as_bool()
-            .ok_or_else(|| RuntimeError::new("Loop condition must evaluate to a boolean"))?
-        {
-            self.execute(body)?;
-        }
-        Ok(ControlFlow::Continue(()))
+        let parent = Rc::clone(&self.environment);
+        let new_env = Rc::new(RefCell::new(Environment::new(Some(parent))));
+
+        self.with_new_environment(new_env, |interpreter| {
+            while interpreter
+                .evaluate(condition)?
+                .as_bool()
+                .ok_or_else(|| RuntimeError::new("Loop condition must evaluate to a boolean"))?
+            {
+                match interpreter.execute(body)? {
+                    ExecutionFlow::Normal | ExecutionFlow::Continue => continue,
+                    ExecutionFlow::Break => break,
+                    ret @ ExecutionFlow::Return(_) => return Ok(ret),
+                }
+            }
+
+            Ok(ExecutionFlow::Normal)
+        })
+    }
+
+    fn visit_for_stmt(
+        &mut self,
+        var: &Token,
+        start: &Expr,
+        end: &Expr,
+        body: &Stmt,
+    ) -> StmtEvalResult {
+        let parent = Rc::clone(&self.environment);
+        let new_env = Rc::new(RefCell::new(Environment::new(Some(parent))));
+
+        self.with_new_environment(new_env, |interpreter| {
+            // FIXME: handle errors, must be Number type
+            let mut i = interpreter.evaluate(start)?.as_number().unwrap();
+            let end = interpreter.evaluate(end)?.as_number().unwrap();
+
+            interpreter
+                .environment
+                .borrow_mut()
+                .assign(&var.lexeme, Value::Number(i));
+
+            while i < end {
+                match interpreter.execute(body)? {
+                    ExecutionFlow::Break => break,
+                    ret @ ExecutionFlow::Return(_) => return Ok(ret),
+                    ExecutionFlow::Normal | ExecutionFlow::Continue => {}
+                }
+                i += 1.0;
+                interpreter
+                    .environment
+                    .borrow_mut()
+                    .assign(&var.lexeme, Value::Number(i));
+            }
+
+            Ok(ExecutionFlow::Normal)
+        })
+    }
+
+    fn visit_break_stmt(&mut self) -> StmtEvalResult {
+        Ok(ExecutionFlow::Break)
+    }
+
+    fn visit_continue_stmt(&mut self) -> StmtEvalResult {
+        Ok(ExecutionFlow::Continue)
     }
 
     fn visit_func_declaration(&mut self, declaration: &Rc<FunctionDecl>) -> StmtEvalResult {
@@ -120,7 +167,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         self.environment
             .borrow_mut()
             .assign(&declaration.name.lexeme, value);
-        Ok(ControlFlow::Continue(()))
+        Ok(ExecutionFlow::Normal)
     }
 
     fn visit_return_stmt(&mut self, value: &Option<Expr>) -> StmtEvalResult {
@@ -129,8 +176,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         } else {
             Value::None
         };
-
-        Ok(ControlFlow::Break(return_value))
+        Ok(ExecutionFlow::Return(return_value))
     }
 
     fn visit_struct_declaration(&mut self, declaration: &StructDecl) -> StmtEvalResult {
@@ -156,7 +202,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
             methods,
         });
         environment.assign(&declaration.name.lexeme, struct_decl);
-        Ok(ControlFlow::Continue(()))
+        Ok(ExecutionFlow::Normal)
     }
 }
 
@@ -334,6 +380,18 @@ impl Interpreter {
         }
     }
 
+    fn with_new_environment<F, R>(&mut self, environment: EnvRef, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let previous = std::mem::replace(&mut self.environment, environment);
+
+        let result = f(self);
+
+        self.environment = previous;
+        result
+    }
+
     fn property_from_instance(
         &self,
         name: &Token,
@@ -421,6 +479,21 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: &Stmt) -> StmtEvalResult {
         stmt.accept(self)
+    }
+
+    fn execute_statements(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
+        let mut final_flow = ExecutionFlow::Normal;
+        for stmt in stmts {
+            match self.execute(stmt)? {
+                ExecutionFlow::Normal => continue,
+                flow => {
+                    final_flow = flow;
+                    break;
+                }
+            }
+        }
+
+        Ok(final_flow)
     }
 }
 
