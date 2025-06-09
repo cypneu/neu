@@ -143,9 +143,10 @@ impl Parser {
         self.consume(TokenType::For, "Expeced 'for'.")?;
         let var = self.consume(TokenType::Identifier, "Expected loop variable")?;
         self.consume(TokenType::In, "Expected 'in' in for loop")?;
-        let start = self.unary(false)?;
+
+        let start = self.term(false)?;
         self.consume(TokenType::DotDot, "Expected '..' in range for loop")?;
-        let end = self.unary(false)?;
+        let end = self.term(false)?;
 
         self.loop_nesting_depth += 1;
         let body = self.block()?;
@@ -181,7 +182,7 @@ impl Parser {
     }
 
     fn continue_statement(&mut self) -> ParseResult<Stmt> {
-        let keyword = self.consume(TokenType::Continue, "Expected 'break'.")?;
+        let keyword = self.consume(TokenType::Continue, "Expected 'continue'.")?;
         if self.loop_nesting_depth == 0 {
             return Err(self.error(&keyword, "Continue can be used only within a loop."));
         }
@@ -383,18 +384,32 @@ impl Parser {
     }
 
     fn struct_literal(&mut self, initializer: Expr) -> ParseResult<Expr> {
+        use std::collections::HashSet;
+
         let mut fields = Vec::<(Token, Expr)>::new();
+        let mut seen = HashSet::<String>::new();
+
         if !self.check(TokenType::RightBrace) {
             loop {
                 let name = self.consume(TokenType::Identifier, "Expected field name.")?;
+
+                if !seen.insert(name.lexeme.clone()) {
+                    return Err(self.error(
+                        &name,
+                        &format!("Duplicate field '{}' in struct literal.", name.lexeme),
+                    ));
+                }
+
                 self.consume(TokenType::Colon, "Expected ':' after field name.")?;
                 let value = self.or(true)?;
                 fields.push((name, value));
+
                 if !self.consume_if(TokenType::Comma) {
                     break;
                 }
             }
         }
+
         self.consume(TokenType::RightBrace, "Expected '}' after struct literal.")?;
         Ok(Expr::struct_init(initializer, fields))
     }
@@ -979,5 +994,21 @@ mod tests {
         assert!(errors[0]
             .message
             .contains("Continue can be used only within a loop."));
+    }
+
+    #[test]
+    fn parse_error_struct_literal_duplicate_fields() {
+        let src = "struct Test {x, y} p = Test{x: 1, x: 2};";
+        let (toks, _) = Scanner::scan(src);
+        let (_stmts, errors) = Parser::parse(toks);
+        assert!(
+            !errors.is_empty(),
+            "Expected a parse error for duplicate field in struct literal"
+        );
+        assert!(
+            errors[0].message.contains("Duplicate field 'x'"),
+            "Unexpected error message: {:?}",
+            errors[0].message
+        );
     }
 }

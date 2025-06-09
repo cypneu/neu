@@ -19,7 +19,7 @@ impl BoundMethod {
 
 impl Callable for BoundMethod {
     fn arity(&self) -> Option<usize> {
-        self.method.arity().map(|n| n - 1)
+        self.method.arity().map(|n| n.saturating_sub(1))
     }
 
     fn call(

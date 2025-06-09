@@ -332,7 +332,7 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         };
 
         if struct_decl.fields.len() != fields.len() {
-            let msg = "All struct variables must be initialized exactly once.";
+            let msg = "All and only defined struct variables must be initialized.";
             return Err(RuntimeError::new(msg));
         }
 
@@ -405,10 +405,19 @@ impl Interpreter {
         instance: Rc<RefCell<StructInstance>>,
     ) -> ExprEvalResult {
         let value = instance.borrow().get(name)?;
-        match value.as_ref() {
-            Value::Callable(method) => self.bind_instance_method(name, method, instance),
-            _ => Ok(value.as_ref().clone()),
+
+        if instance
+            .borrow()
+            .struct_decl
+            .methods
+            .contains_key(&name.lexeme)
+        {
+            if let Value::Callable(method) = value.as_ref() {
+                return self.bind_instance_method(name, method, instance);
+            }
         }
+
+        Ok(value.as_ref().clone())
     }
 
     fn property_from_struct_decl(&self, name: &Token, decl: &StructDeclaration) -> ExprEvalResult {
@@ -502,7 +511,7 @@ impl Interpreter {
     fn expect_integer(&self, value: Value, token: &Token) -> Result<i64, RuntimeError> {
         value
             .as_integer()
-            .ok_or_else(|| RuntimeError::with_token(token, "Fractional numbers are not allowed."))
+            .ok_or_else(|| RuntimeError::with_token(token, "Expected integer."))
     }
 
     fn expect_bool(&self, value: Value, operator: &Token) -> Result<bool, RuntimeError> {
@@ -850,7 +859,7 @@ mod tests {
         let err = eval(src, "i").unwrap_err();
         assert!(err
             .message
-            .contains("All struct variables must be initialized exactly once."));
+            .contains("All and only defined struct variables must be initialized."));
     }
 
     #[test]
@@ -891,25 +900,16 @@ mod tests {
         let err = eval(src, "p").unwrap_err();
         assert!(err
             .message
-            .contains("All struct variables must be initialized exactly once."));
-    }
-
-    #[test]
-    fn error_init_duplicate_field_in_literal() {
-        let src = "struct Point {x,y} p = Point {x:1, y:2, x:3};";
-        let err = eval(src, "p").unwrap_err();
-        assert!(err
-            .message
-            .contains("All struct variables must be initialized exactly once."));
+            .contains("All and only defined struct variables must be initialized."));
     }
 
     #[test]
     fn for_loop_rejects_float_bounds() {
         let err = eval("for i in 0.5..2 { }", "i").unwrap_err();
-        assert!(err.message.contains("Fractional numbers are not allowed."));
+        assert!(err.message.contains("Expected integer."));
 
         let err = eval("for i in 0..2.5 { }", "i").unwrap_err();
-        assert!(err.message.contains("Fractional numbers are not allowed."));
+        assert!(err.message.contains("Expected integer."));
     }
 
     #[test]
@@ -932,5 +932,18 @@ mod tests {
     fn mixed_type_ordering_errors() {
         let err = eval(r#"x = 1 < "b";"#, "x").unwrap_err();
         assert!(err.message.contains("two numbers or two strings"));
+    }
+
+    #[test]
+    fn field_callable_not_treated_as_method() {
+        let src = r#"
+            struct Box { f }
+
+            fn test(x) { return x + 1; }
+
+            b = Box { f: test };
+            res = b.f(3);
+        "#;
+        assert_eq!(eval(src, "res").unwrap(), Value::Number(4.0));
     }
 }
