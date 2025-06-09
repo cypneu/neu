@@ -81,6 +81,13 @@ impl Value {
         }
     }
 
+    pub fn as_integer(&self) -> Option<i64> {
+        match self {
+            Value::Number(n) if n.fract() == 0.0 => Some(*n as i64),
+            _ => None,
+        }
+    }
+
     pub fn as_bool(&self) -> Option<bool> {
         if let Value::Boolean(b) = self {
             Some(*b)

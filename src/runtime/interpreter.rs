@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -119,18 +120,20 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         end: &Expr,
         body: &Stmt,
     ) -> StmtEvalResult {
+        let start_val = self.evaluate(start)?;
+        let mut i = self.expect_integer(start_val, var)?;
+
+        let end_val = self.evaluate(end)?;
+        let end = self.expect_integer(end_val, var)?;
+
         let parent = Rc::clone(&self.environment);
         let new_env = Rc::new(RefCell::new(Environment::new(Some(parent))));
 
         self.with_new_environment(new_env, |interpreter| {
-            // FIXME: handle errors, must be Number type
-            let mut i = interpreter.evaluate(start)?.as_number().unwrap();
-            let end = interpreter.evaluate(end)?.as_number().unwrap();
-
             interpreter
                 .environment
                 .borrow_mut()
-                .assign(&var.lexeme, Value::Number(i));
+                .assign(&var.lexeme, Value::Number(i as f64));
 
             while i < end {
                 match interpreter.execute(body)? {
@@ -138,11 +141,11 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
                     ret @ ExecutionFlow::Return(_) => return Ok(ret),
                     ExecutionFlow::Normal | ExecutionFlow::Continue => {}
                 }
-                i += 1.0;
+                i += 1;
                 interpreter
                     .environment
                     .borrow_mut()
-                    .assign(&var.lexeme, Value::Number(i));
+                    .assign(&var.lexeme, Value::Number(i as f64));
             }
 
             Ok(ExecutionFlow::Normal)
@@ -225,24 +228,28 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
     }
 
     fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> ExprEvalResult {
-        let left_val = self.evaluate(left)?;
-        let right_val = self.evaluate(right)?;
+        let left = self.evaluate(left)?;
+        let right = self.evaluate(right)?;
 
         use TokenType::*;
         match operator.kind {
-            Plus => self.eval_plus(left_val, right_val, operator),
-            Minus => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a - b),
-            Slash => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a / b),
-            Star => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a * b),
-            Modulo => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a % b),
+            Plus => self.eval_plus(left, right, operator),
+            Minus => self.eval_numeric_binop(left, right, operator, |a, b| a - b),
+            Slash => self.eval_numeric_binop(left, right, operator, |a, b| a / b),
+            Star => self.eval_numeric_binop(left, right, operator, |a, b| a * b),
+            Modulo => self.eval_numeric_binop(left, right, operator, |a, b| a % b),
 
-            Greater => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a > b),
-            GreaterEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a >= b),
-            Less => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a < b),
-            LessEqual => self.eval_numeric_binop(left_val, right_val, operator, |a, b| a <= b),
+            Greater => self.eval_order_binop(left, right, operator, |o| o == Ordering::Greater),
+            GreaterEqual => self.eval_order_binop(left, right, operator, |o| {
+                matches!(o, Ordering::Greater | Ordering::Equal)
+            }),
+            Less => self.eval_order_binop(left, right, operator, |o| o == Ordering::Less),
+            LessEqual => self.eval_order_binop(left, right, operator, |o| {
+                matches!(o, Ordering::Less | Ordering::Equal)
+            }),
 
-            BangEqual => Ok(Value::Boolean(!(left_val == right_val))),
-            EqualEqual => Ok(Value::Boolean(left_val == right_val)),
+            BangEqual => Ok(Value::Boolean(!(left == right))),
+            EqualEqual => Ok(Value::Boolean(left == right)),
 
             _ => unreachable!("Unknown binary operator"),
         }
@@ -448,6 +455,32 @@ impl Interpreter {
         Ok(op(l, r).into())
     }
 
+    fn eval_order_binop<F>(
+        &self,
+        left: Value,
+        right: Value,
+        operator: &Token,
+        pred: F,
+    ) -> ExprEvalResult
+    where
+        F: FnOnce(Ordering) -> bool,
+    {
+        use Value::*;
+        let ord = match (left, right) {
+            (Number(a), Number(b)) => a
+                .partial_cmp(&b)
+                .ok_or_else(|| RuntimeError::with_token(operator, "NaN is unordered"))?,
+            (String(a), String(b)) => a.cmp(&b),
+            _ => {
+                return Err(RuntimeError::with_token(
+                    operator,
+                    "Operands must be two numbers or two strings for comparison.",
+                ))
+            }
+        };
+        Ok(Value::Boolean(pred(ord)))
+    }
+
     fn eval_plus(&self, left: Value, right: Value, operator: &Token) -> ExprEvalResult {
         match (left, right) {
             (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
@@ -464,6 +497,12 @@ impl Interpreter {
             operator,
             "Operand must be a number",
         ))
+    }
+
+    fn expect_integer(&self, value: Value, token: &Token) -> Result<i64, RuntimeError> {
+        value
+            .as_integer()
+            .ok_or_else(|| RuntimeError::with_token(token, "Fractional numbers are not allowed."))
     }
 
     fn expect_bool(&self, value: Value, operator: &Token) -> Result<bool, RuntimeError> {
@@ -862,5 +901,36 @@ mod tests {
         assert!(err
             .message
             .contains("All struct variables must be initialized exactly once."));
+    }
+
+    #[test]
+    fn for_loop_rejects_float_bounds() {
+        let err = eval("for i in 0.5..2 { }", "i").unwrap_err();
+        assert!(err.message.contains("Fractional numbers are not allowed."));
+
+        let err = eval("for i in 0..2.5 { }", "i").unwrap_err();
+        assert!(err.message.contains("Fractional numbers are not allowed."));
+    }
+
+    #[test]
+    fn string_ordering_works() {
+        assert_eq!(
+            eval(r#"x = "a" <  "b";"#, "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval(r#"x = "z" >= "y";"#, "x").unwrap(),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            eval(r#"x = "cat" > "car";"#, "x").unwrap(),
+            Value::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn mixed_type_ordering_errors() {
+        let err = eval(r#"x = 1 < "b";"#, "x").unwrap_err();
+        assert!(err.message.contains("two numbers or two strings"));
     }
 }

@@ -198,27 +198,7 @@ impl Parser {
         let name = self.consume(TokenType::Identifier, "Expected struct name")?;
         self.consume(TokenType::LeftBrace, "Expected '{' before struct body")?;
 
-        let mut fields = Vec::new();
-        let mut field_names_seen = std::collections::HashSet::new();
-
-        while self.check(TokenType::Identifier) {
-            let field_token = self.advance();
-            if !field_names_seen.insert(field_token.lexeme.clone()) {
-                let msg = format!("Duplicate field name '{}'.", field_token.lexeme);
-                return Err(self.error(&field_token, &msg));
-            }
-
-            fields.push(field_token);
-            if self.consume_if(TokenType::Comma) {
-                continue;
-            }
-
-            if self.check(TokenType::RightBrace) {
-                break;
-            }
-
-            return Err(self.error(&name, "Expected ',' before method declarations"));
-        }
+        let fields = self.parse_struct_declaration_fields(&name)?;
 
         let mut methods = Vec::new();
         while !self.check_any(&[TokenType::RightBrace, TokenType::Eof]) {
@@ -234,7 +214,9 @@ impl Parser {
         let func_decl = self.parse_callable_declaration("function")?;
         Ok(Stmt::func_declaration(func_decl))
     }
+}
 
+impl Parser {
     fn parse_callable_declaration(&mut self, kind: &str) -> Result<FunctionDecl, ParseError> {
         self.consume(TokenType::Fn, &format!("Expected '{}'.", kind))?;
         let name = self.consume(TokenType::Identifier, &format!("Expected {} name.", kind))?;
@@ -277,6 +259,35 @@ impl Parser {
             &format!("Expected ')' in {} declaration", kind),
         )?;
         Ok(params)
+    }
+
+    fn parse_struct_declaration_fields(&mut self, name: &Token) -> ParseResult<Vec<Token>> {
+        use std::collections::HashSet;
+
+        let mut fields = Vec::new();
+        let mut seen = HashSet::<String>::new();
+
+        while self.check(TokenType::Identifier) {
+            let field = self.advance();
+            if !seen.insert(field.lexeme.clone()) {
+                return Err(
+                    self.error(&field, &format!("Duplicate field name '{}'.", field.lexeme))
+                );
+            }
+            fields.push(field);
+
+            if self.consume_if(TokenType::Comma) {
+                continue;
+            }
+
+            if self.check(TokenType::RightBrace) {
+                break;
+            }
+
+            return Err(self.error(name, "Expected ',' before method declarations"));
+        }
+
+        Ok(fields)
     }
 }
 
@@ -371,26 +382,6 @@ impl Parser {
         Ok(expr)
     }
 
-    fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
-        let mut arguments = Vec::new();
-        if !self.check(TokenType::RightParen) {
-            loop {
-                if arguments.len() >= 255 {
-                    let token = self.peek().clone();
-                    return Err(self.error(&token, "Can't have more than 255 arguments."));
-                }
-
-                arguments.push(self.or(true)?);
-                if !self.consume_if(TokenType::Comma) {
-                    break;
-                }
-            }
-        }
-
-        self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
-        Ok(Expr::call(callee, arguments))
-    }
-
     fn struct_literal(&mut self, initializer: Expr) -> ParseResult<Expr> {
         let mut fields = Vec::<(Token, Expr)>::new();
         if !self.check(TokenType::RightBrace) {
@@ -424,6 +415,28 @@ impl Parser {
             _ => return Err(self.error(&token, "Expected expression")),
         };
         Ok(expr)
+    }
+}
+
+impl Parser {
+    fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
+        let mut arguments = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    let token = self.peek().clone();
+                    return Err(self.error(&token, "Can't have more than 255 arguments."));
+                }
+
+                arguments.push(self.or(true)?);
+                if !self.consume_if(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        Ok(Expr::call(callee, arguments))
     }
 
     fn binary_expr<F>(
