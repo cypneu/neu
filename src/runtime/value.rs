@@ -9,17 +9,17 @@ use crate::runtime::struct_declaration::StructDeclaration;
 use crate::runtime::struct_instance::StructInstance;
 
 #[derive(Clone)]
-pub enum Value {
+pub enum Value<'src> {
     None,
     Boolean(bool),
     String(String),
     Number(f64),
-    Callable(CallableObj),
-    StructDecl(StructDeclaration),
-    StructInstance(Rc<RefCell<StructInstance>>),
+    Callable(CallableObj<'src>),
+    StructDecl(StructDeclaration<'src>),
+    StructInstance(Rc<RefCell<StructInstance<'src>>>),
 }
 
-impl fmt::Debug for Value {
+impl fmt::Debug for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::None => write!(f, "None"),
@@ -33,7 +33,7 @@ impl fmt::Debug for Value {
     }
 }
 
-impl std::fmt::Display for Value {
+impl std::fmt::Display for Value<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::None => write!(f, "none"),
@@ -47,7 +47,7 @@ impl std::fmt::Display for Value {
     }
 }
 
-impl PartialEq for Value {
+impl PartialEq for Value<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Value::None, Value::None) => true,
@@ -61,18 +61,18 @@ impl PartialEq for Value {
     }
 }
 
-impl From<Literal> for Value {
-    fn from(lit: Literal) -> Self {
+impl<'src> From<Literal<'src>> for Value<'src> {
+    fn from(lit: Literal<'src>) -> Self {
         match lit {
             Literal::None => Value::None,
             Literal::Boolean(b) => Value::Boolean(b),
-            Literal::String(s) => Value::String(s),
+            Literal::String(s) => Value::String(s.to_string()),
             Literal::Number(n) => Value::Number(n),
         }
     }
 }
 
-impl Value {
+impl Value<'_> {
     pub fn as_number(&self) -> Option<f64> {
         if let Value::Number(n) = self {
             Some(*n)
@@ -97,25 +97,25 @@ impl Value {
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for Value<'_> {
     fn from(n: f64) -> Self {
         Value::Number(n)
     }
 }
 
-impl From<bool> for Value {
+impl From<bool> for Value<'_> {
     fn from(b: bool) -> Self {
         Value::Boolean(b)
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Value<'_> {
     fn from(s: String) -> Self {
         Value::String(s)
     }
 }
 
-impl<'a> From<&'a str> for Value {
+impl<'a> From<&'a str> for Value<'_> {
     fn from(s: &'a str) -> Self {
         Value::String(s.to_owned())
     }

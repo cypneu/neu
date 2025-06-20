@@ -23,19 +23,19 @@ impl AstPrinter {
     }
 }
 
-impl Visitor<String> for AstPrinter {
+impl Visitor<'_, String> for AstPrinter {
     fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> String {
-        self.parenthesize(&operator.lexeme, &[left, right])
+        self.parenthesize(operator.lexeme, &[left, right])
     }
 
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> String {
-        self.parenthesize(&operator.lexeme, &[right])
+        self.parenthesize(operator.lexeme, &[right])
     }
 
     fn visit_literal_expr(&mut self, literal: &Literal) -> String {
         match literal {
             Literal::Number(number) => number.to_string(),
-            Literal::String(string) => string.into(),
+            Literal::String(string) => string.to_string(),
             value => format!("{:?}", value),
         }
     }

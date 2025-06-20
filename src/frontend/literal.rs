@@ -1,7 +1,7 @@
 #[derive(Clone, Debug, PartialEq)]
-pub enum Literal {
+pub enum Literal<'src> {
     None,
     Boolean(bool),
-    String(String),
+    String(&'src str),
     Number(f64),
 }

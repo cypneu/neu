@@ -1,5 +1,4 @@
-use std::iter::Peekable;
-use std::str::Chars;
+use std::str::CharIndices;
 
 use crate::frontend::literal::Literal;
 use crate::frontend::token::{Token, TokenType};
@@ -11,123 +10,150 @@ pub struct ScanError {
 }
 
 #[derive(Debug)]
-pub struct Scanner<'a> {
-    source: Peekable<Chars<'a>>,
-    tokens: Vec<Token>,
-    errors: Vec<ScanError>,
+pub struct Scanner<'src> {
+    source: &'src str,
+    chars: CharIndices<'src>,
+    peeked: Option<(usize, char)>,
+    start: usize,
+    end: usize,
     line: usize,
+
+    tokens: Vec<Token<'src>>,
+    errors: Vec<ScanError>,
 }
 
-impl<'a> Scanner<'a> {
-    pub fn scan(source: &'a str) -> (Vec<Token>, Vec<ScanError>) {
-        let scanner = Scanner::new(source);
-        scanner.scan_tokens()
-    }
+impl<'src> Scanner<'src> {
+    pub fn scan(source: &'src str) -> (Vec<Token<'src>>, Vec<ScanError>) {
+        let mut scanner = Scanner::new(source);
 
-    fn scan_tokens(mut self) -> (Vec<Token>, Vec<ScanError>) {
-        while let Some(character) = self.advance() {
-            let ch = character.into();
-            match character {
-                '.' => {
-                    if self.consume_char_if('.') {
-                        self.add_token(TokenType::DotDot, "..");
-                    } else {
-                        self.add_token(TokenType::Dot, ch);
-                    }
-                }
-                '(' => self.add_token(TokenType::LeftParen, ch),
-                ')' => self.add_token(TokenType::RightParen, ch),
-                '{' => self.add_token(TokenType::LeftBrace, ch),
-                '}' => self.add_token(TokenType::RightBrace, ch),
-                ',' => self.add_token(TokenType::Comma, ch),
-                '-' => self.add_token(TokenType::Minus, ch),
-                '+' => self.add_token(TokenType::Plus, ch),
-                ';' => self.add_token(TokenType::Semicolon, ch),
-                ':' => self.add_token(TokenType::Colon, ch),
-                '*' => self.add_token(TokenType::Star, ch),
-                '%' => self.add_token(TokenType::Modulo, ch),
-                '!' => {
-                    if self.consume_char_if('=') {
-                        self.add_token(TokenType::BangEqual, "!=");
-                    } else {
-                        self.add_token(TokenType::Bang, ch);
-                    }
-                }
-                '=' => {
-                    if self.consume_char_if('=') {
-                        self.add_token(TokenType::EqualEqual, "==");
-                    } else {
-                        self.add_token(TokenType::Equal, ch);
-                    }
-                }
-                '<' => {
-                    if self.consume_char_if('=') {
-                        self.add_token(TokenType::LessEqual, "<=");
-                    } else {
-                        self.add_token(TokenType::Less, ch);
-                    }
-                }
-                '>' => {
-                    if self.consume_char_if('=') {
-                        self.add_token(TokenType::GreaterEqual, ">=");
-                    } else {
-                        self.add_token(TokenType::Greater, ch);
-                    };
-                }
-                '/' => {
-                    if self.consume_char_if('/') {
-                        self.consume_while(|c| c != '\n');
-                    } else {
-                        self.add_token(TokenType::Slash, ch)
-                    }
-                }
-                '\n' => self.line += 1,
-                '"' => self.scan_string(),
-                character if character.is_whitespace() => {}
-                character if character.is_ascii_digit() => self.scan_number(ch),
-                character if character.is_alphabetic() || ch == "_" => self.scan_identifier(ch),
-                character => self.error(self.line, format!("Unexpected character '{}'", character)),
-            }
+        scanner.peeked = scanner.chars.next();
+
+        while !scanner.is_at_end() {
+            scanner.start = scanner.peek_idx();
+            scanner.scan_token();
         }
 
-        self.add_token(TokenType::Eof, "");
-        (self.tokens, self.errors)
+        scanner.add_token(TokenType::Eof);
+        (scanner.tokens, scanner.errors)
     }
 
-    fn error(&mut self, line: usize, message: String) {
-        self.errors.push(ScanError { line, message });
+    fn scan_token(&mut self) {
+        use TokenType::*;
+
+        let ch = self.advance();
+        match ch {
+            '.' => {
+                let token = if self.match_next('.') { DotDot } else { Dot };
+                self.add_token(token)
+            }
+            '(' => self.add_token(LeftParen),
+            ')' => self.add_token(RightParen),
+            '{' => self.add_token(LeftBrace),
+            '}' => self.add_token(RightBrace),
+            ',' => self.add_token(Comma),
+            '-' => self.add_token(Minus),
+            '+' => self.add_token(Plus),
+            ';' => self.add_token(Semicolon),
+            ':' => self.add_token(Colon),
+            '*' => self.add_token(Star),
+            '%' => self.add_token(Modulo),
+            '!' => {
+                let token = if self.match_next('=') {
+                    BangEqual
+                } else {
+                    Bang
+                };
+                self.add_token(token)
+            }
+
+            '=' => {
+                let token = if self.match_next('=') {
+                    EqualEqual
+                } else {
+                    Equal
+                };
+                self.add_token(token)
+            }
+
+            '<' => {
+                let token = if self.match_next('=') {
+                    LessEqual
+                } else {
+                    Less
+                };
+                self.add_token(token)
+            }
+
+            '>' => {
+                let token = if self.match_next('=') {
+                    GreaterEqual
+                } else {
+                    Greater
+                };
+                self.add_token(token)
+            }
+
+            '/' => {
+                if self.match_next('/') {
+                    while self.peek().is_some_and(|c| c != '\n') {
+                        self.advance();
+                    }
+                } else {
+                    self.add_token(TokenType::Slash)
+                }
+            }
+            '"' => self.scan_string(),
+            ch if ch.is_ascii_digit() => self.scan_number(),
+            ch if ch.is_alphabetic() || ch == '_' => self.scan_identifier(),
+            ch if ch.is_whitespace() => {}
+            _ => self.error(format!("Unexpected character '{}'", ch)),
+        }
+    }
+
+    fn error(&mut self, message: impl Into<String>) {
+        self.errors.push(ScanError {
+            line: self.line,
+            message: message.into(),
+        });
     }
 
     fn scan_string(&mut self) {
-        let value = self.consume_while(|c| c != '"');
-
-        if self.advance().is_none() {
-            self.error(self.line, "Unterminated string.".into());
-        } else {
-            let lexeme = format!("\"{}\"", value);
-            self.add_token_literal(TokenType::String, lexeme, Some(Literal::String(value)));
-        }
-    }
-
-    fn scan_number(&mut self, mut num_str: String) {
-        num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
-
-        if self.peek() == Some(&'.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
-            num_str.push(self.advance().unwrap());
-            num_str.push_str(self.consume_while(|c| c.is_ascii_digit()).as_str());
+        while self.peek().is_some_and(|c| c != '"' && !self.is_at_end()) {
+            self.advance();
         }
 
-        let num = num_str.parse::<f64>().unwrap();
-        self.add_token_literal(TokenType::Number, num_str, Some(Literal::Number(num)));
+        if self.is_at_end() {
+            self.error("Unterminated string.");
+            return;
+        }
+
+        self.advance();
+        let value = &self.slice()[1..self.slice().len() - 1];
+        self.add_token_literal(TokenType::String, Some(Literal::String(value)));
     }
 
-    fn scan_identifier(&mut self, mut identifier: String) {
-        identifier.push_str(
-            self.consume_while(|c| c.is_alphanumeric() || c == '_')
-                .as_str(),
-        );
+    fn scan_number(&mut self) {
+        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+            self.advance();
+        }
 
-        let (kind, literal_opt) = match identifier.as_str() {
+        if self.peek() == Some('.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
+            self.advance();
+            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                self.advance();
+            }
+        }
+
+        let value = self.slice().parse::<f64>().unwrap();
+        self.add_token_literal(TokenType::Number, Some(Literal::Number(value)));
+    }
+
+    fn scan_identifier(&mut self) {
+        while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+            self.advance();
+        }
+
+        let (kind, literal_opt) = match self.slice() {
             "and" => (TokenType::And, None),
             "struct" => (TokenType::Struct, None),
             "else" => (TokenType::Else, None),
@@ -147,64 +173,73 @@ impl<'a> Scanner<'a> {
             _ => (TokenType::Identifier, None),
         };
 
-        self.add_token_literal(kind, identifier, literal_opt);
+        self.add_token_literal(kind, literal_opt);
     }
 
-    fn new(source: &'a str) -> Self {
+    fn new(source: &'src str) -> Self {
         Scanner {
-            source: source.chars().peekable(),
+            source,
+            chars: source.char_indices(),
+            peeked: None,
+            start: 0,
+            end: 0,
+            line: 1,
+
             tokens: Vec::new(),
             errors: Vec::new(),
-            line: 1,
         }
     }
 
-    fn consume_char_if(&mut self, expected: char) -> bool {
-        self.peek().is_some_and(|c| *c == expected) && {
+    fn match_next(&mut self, expected: char) -> bool {
+        if self.peek() == Some(expected) {
             self.advance();
             true
+        } else {
+            false
         }
     }
 
-    fn consume_while<F>(&mut self, predicate: F) -> String
-    where
-        F: Fn(char) -> bool,
-    {
-        let mut buf = String::new();
-        while self.peek().is_some_and(|&c| predicate(c)) {
-            let ch = self.advance().unwrap();
-            if ch == '\n' {
-                self.line += 1;
-            }
-            buf.push(ch);
-        }
-        buf
+    fn slice(&self) -> &'src str {
+        &self.source[self.start..self.end]
     }
 
-    fn add_token(&mut self, kind: TokenType, lexeme: impl Into<String>) {
-        self.add_token_literal(kind, lexeme, None);
+    fn add_token(&mut self, kind: TokenType) {
+        self.add_token_literal(kind, None)
     }
 
-    fn add_token_literal(
-        &mut self,
-        kind: TokenType,
-        lexeme: impl Into<String>,
-        lit: Option<Literal>,
-    ) {
+    fn add_token_literal(&mut self, kind: TokenType, lit: Option<Literal<'src>>) {
         self.tokens
-            .push(Token::new(kind, lexeme.into(), lit, self.line));
+            .push(Token::new(kind, self.slice(), lit, self.line))
     }
 
-    fn advance(&mut self) -> Option<char> {
-        self.source.next()
+    fn advance(&mut self) -> char {
+        let (idx, ch) = self.peeked.take().expect("called advance() at EOF");
+
+        self.end = idx + ch.len_utf8();
+        self.peeked = self.chars.next();
+
+        if ch == '\n' {
+            self.line += 1;
+        }
+
+        ch
     }
 
-    fn peek(&mut self) -> Option<&char> {
-        self.source.peek()
+    fn is_at_end(&self) -> bool {
+        self.peeked.is_none()
+    }
+
+    fn peek(&mut self) -> Option<char> {
+        self.peeked.map(|(_, ch)| ch)
     }
 
     fn peek_next(&mut self) -> Option<char> {
-        self.source.clone().nth(1)
+        let mut clone = self.chars.clone();
+        clone.next().map(|(_, ch)| ch)
+    }
+
+    fn peek_idx(&self) -> usize {
+        self.peeked.map(|(i, _)| i).unwrap_or(self.source.len())
     }
 }
 
@@ -306,17 +341,13 @@ mod tests {
             (
                 TokenType::String,
                 "\"foo\"",
-                Some(Literal::String("foo".to_string())),
+                Some(Literal::String("foo".into())),
             ),
-            (
-                TokenType::String,
-                "\"\"",
-                Some(Literal::String("".to_string())),
-            ),
+            (TokenType::String, "\"\"", Some(Literal::String("".into()))),
             (
                 TokenType::String,
                 "\"hello world\"",
-                Some(Literal::String("hello world".to_string())),
+                Some(Literal::String("hello world".into())),
             ),
         ];
         assert_tokens_properties(&tokens, &expected);

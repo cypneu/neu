@@ -6,28 +6,28 @@ use crate::runtime::interpreter::Interpreter;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
 
-pub struct BoundMethod {
-    receiver: Value,
-    method: CallableObj,
+pub struct BoundMethod<'src> {
+    receiver: Rc<Value<'src>>,
+    method: CallableObj<'src>,
 }
 
-impl BoundMethod {
-    pub fn new(receiver: Value, method: CallableObj) -> Rc<Self> {
+impl<'src> BoundMethod<'src> {
+    pub fn new(receiver: Rc<Value<'src>>, method: CallableObj<'src>) -> Rc<Self> {
         Rc::new(Self { receiver, method })
     }
 }
 
-impl Callable for BoundMethod {
+impl<'src> Callable<'src> for BoundMethod<'src> {
     fn arity(&self) -> Option<usize> {
         self.method.arity().map(|n| n.saturating_sub(1))
     }
 
     fn call(
         &self,
-        interpreter: &mut Interpreter,
-        mut args: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
-        args.insert(0, self.receiver.clone());
+        interpreter: &mut Interpreter<'src>,
+        mut args: Vec<Rc<Value<'src>>>,
+    ) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
+        args.insert(0, Rc::clone(&self.receiver));
         self.method.call(interpreter, args)
     }
 }

@@ -5,34 +5,35 @@ use crate::runtime::interpreter::EnvRef;
 use crate::runtime::runtime_error::RuntimeError;
 use crate::runtime::value::Value;
 
-pub struct Environment {
-    pub enclosing: Option<EnvRef>,
-    values: HashMap<String, Value>,
+use std::rc::Rc;
+
+pub struct Environment<'src> {
+    pub enclosing: Option<EnvRef<'src>>,
+    values: HashMap<&'src str, Rc<Value<'src>>>,
 }
 
-impl Environment {
-    pub fn new(enclosing: Option<EnvRef>) -> Self {
+impl<'src> Environment<'src> {
+    pub fn new(enclosing: Option<EnvRef<'src>>) -> Self {
         Environment {
             enclosing,
             values: HashMap::new(),
         }
     }
 
-    pub fn define(&mut self, name: &str, val: Value) {
-        self.values.insert(name.to_string(), val);
+    pub fn define(&mut self, name: &'src str, val: Rc<Value<'src>>) {
+        self.values.insert(name, val);
     }
 
-    pub fn assign(&mut self, name: &str, val: Value) {
-        let rc_val = val;
-        if self.assign_to_enclosing(name, &rc_val) {
+    pub fn assign(&mut self, name: &'src str, val: Rc<Value<'src>>) {
+        if self.assign_to_enclosing(name, &val) {
             return;
         }
 
-        self.values.insert(name.to_string(), rc_val);
+        self.values.insert(name, val);
     }
 
-    pub fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
-        if let Some(v) = self.values.get(&name.lexeme) {
+    pub fn get(&self, name: &Token<'src>) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
+        if let Some(v) = self.values.get(name.lexeme) {
             Ok(v.clone())
         } else if let Some(parent) = &self.enclosing {
             parent.borrow().get(name)
@@ -42,9 +43,9 @@ impl Environment {
         }
     }
 
-    fn assign_to_enclosing(&mut self, name: &str, val: &Value) -> bool {
+    fn assign_to_enclosing(&mut self, name: &'src str, val: &Rc<Value<'src>>) -> bool {
         if self.values.contains_key(name) {
-            self.values.insert(name.to_string(), val.clone());
+            self.values.insert(name, val.clone());
             true
         } else if let Some(parent) = &self.enclosing {
             parent.borrow_mut().assign_to_enclosing(name, val)

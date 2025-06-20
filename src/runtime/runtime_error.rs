@@ -1,13 +1,13 @@
 use crate::frontend::token::Token;
 
 #[derive(Debug)]
-pub struct RuntimeError {
-    pub token: Option<Token>,
+pub struct RuntimeError<'src> {
+    pub token: Option<Token<'src>>,
     pub message: String,
 }
 
-impl RuntimeError {
-    pub fn with_token(token: &Token, message: &str) -> Self {
+impl<'src> RuntimeError<'src> {
+    pub fn with_token(token: &Token<'src>, message: &str) -> Self {
         Self {
             message: message.to_string(),
             token: Some(token.clone()),

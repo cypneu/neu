@@ -8,30 +8,38 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Clock;
 
-impl Callable for Clock {
+impl<'src> Callable<'src> for Clock {
     fn arity(&self) -> Option<usize> {
         Some(0)
     }
 
-    fn call(&self, _: &mut Interpreter, _: Vec<Value>) -> Result<Value, RuntimeError> {
+    fn call(
+        &self,
+        _: &mut Interpreter,
+        _: Vec<Rc<Value<'src>>>,
+    ) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
         let since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("System clock is before UNIX_EPOCH!");
 
         let seconds = since_epoch.as_secs_f64();
 
-        Ok(Value::Number(seconds))
+        Ok(Rc::new(Value::Number(seconds)))
     }
 }
 
 pub struct Print;
 
-impl Callable for Print {
+impl<'src> Callable<'src> for Print {
     fn arity(&self) -> Option<usize> {
         None
     }
 
-    fn call(&self, _: &mut Interpreter, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    fn call(
+        &self,
+        _: &mut Interpreter,
+        args: Vec<Rc<Value<'src>>>,
+    ) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
         use std::io::{self, Write};
         let stdout = io::stdout();
         let mut handle = stdout.lock();
@@ -42,14 +50,14 @@ impl Callable for Print {
             write!(handle, "{}", val).unwrap();
         }
         writeln!(handle).unwrap();
-        Ok(Value::None)
+        Ok(Rc::new(Value::None))
     }
 }
 
 pub fn register_natives(env: &mut Environment) {
     let clock = Rc::new(Clock);
-    env.define("clock", Value::Callable(clock));
+    env.define("clock", Rc::new(Value::Callable(clock)));
 
     let print_fn = Rc::new(Print);
-    env.define("print", Value::Callable(print_fn));
+    env.define("print", Rc::new(Value::Callable(print_fn)));
 }

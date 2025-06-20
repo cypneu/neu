@@ -4,67 +4,73 @@ use crate::ast::expr::Expr;
 use crate::frontend::token::Token;
 
 #[derive(Debug)]
-pub struct FunctionDecl {
-    pub name: Token,
-    pub params: Vec<Token>,
-    pub body: Vec<Stmt>,
+pub struct FunctionDecl<'src> {
+    pub name: Token<'src>,
+    pub params: Vec<Token<'src>>,
+    pub body: Vec<Stmt<'src>>,
 }
 
 #[derive(Debug)]
-pub struct StructDecl {
-    pub name: Token,
-    pub fields: Vec<Token>,
-    pub methods: Vec<Rc<FunctionDecl>>,
+pub struct StructDecl<'src> {
+    pub name: Token<'src>,
+    pub fields: Vec<Token<'src>>,
+    pub methods: Vec<Rc<FunctionDecl<'src>>>,
 }
 
 #[derive(Debug)]
-pub enum Stmt {
-    Expr(Expr),
-    Block(Vec<Stmt>),
+pub enum Stmt<'src> {
+    Expr(Expr<'src>),
+    Block(Vec<Stmt<'src>>),
     If {
-        condition: Expr,
-        then_branch: Box<Stmt>,
-        else_branch: Option<Box<Stmt>>,
+        condition: Expr<'src>,
+        then_branch: Box<Stmt<'src>>,
+        else_branch: Option<Box<Stmt<'src>>>,
     },
     While {
-        condition: Expr,
-        body: Box<Stmt>,
+        condition: Expr<'src>,
+        body: Box<Stmt<'src>>,
     },
     For {
-        var: Token,
-        start: Expr,
-        end: Expr,
-        body: Box<Stmt>,
+        var: Token<'src>,
+        start: Expr<'src>,
+        end: Expr<'src>,
+        body: Box<Stmt<'src>>,
     },
-    FunctionDecl(Rc<FunctionDecl>),
+    FunctionDecl(Rc<FunctionDecl<'src>>),
     Return {
-        value: Option<Expr>,
+        value: Option<Expr<'src>>,
     },
-    StructDecl(StructDecl),
+    StructDecl(StructDecl<'src>),
     Break,
     Continue,
 }
 
-pub trait Visitor<T> {
-    fn visit_expression_stmt(&mut self, expr: &Expr) -> T;
-    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> T;
+pub trait Visitor<'src, T> {
+    fn visit_expression_stmt(&mut self, expr: &Expr<'src>) -> T;
+    fn visit_block_stmt(&mut self, stmts: &[Stmt<'src>]) -> T;
     fn visit_if_stmt(
         &mut self,
-        condition: &Expr,
-        then_branch: &Stmt,
-        else_branch: Option<&Stmt>,
+        condition: &Expr<'src>,
+        then_branch: &Stmt<'src>,
+        else_branch: Option<&Stmt<'src>>,
     ) -> T;
-    fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> T;
-    fn visit_for_stmt(&mut self, var: &Token, start: &Expr, end: &Expr, body: &Stmt) -> T;
-    fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl>) -> T;
-    fn visit_return_stmt(&mut self, value: &Option<Expr>) -> T;
-    fn visit_struct_declaration(&mut self, struct_decl: &StructDecl) -> T;
+    fn visit_while_stmt(&mut self, condition: &Expr<'src>, body: &Stmt<'src>) -> T;
+    fn visit_for_stmt(
+        &mut self,
+        var: &Token<'src>,
+        start: &Expr<'src>,
+        end: &Expr<'src>,
+        body: &Stmt<'src>,
+    ) -> T;
+    fn visit_func_declaration(&mut self, func_decl: &Rc<FunctionDecl<'src>>) -> T;
+    fn visit_return_stmt(&mut self, value: &Option<Expr<'src>>) -> T;
+    fn visit_struct_declaration(&mut self, struct_decl: &StructDecl<'src>) -> T;
     fn visit_break_stmt(&mut self) -> T;
     fn visit_continue_stmt(&mut self) -> T;
 }
 
-impl Stmt {
-    pub fn accept<T>(&self, visitor: &mut dyn Visitor<T>) -> T {
+impl<'src> Stmt<'src> {
+    pub fn accept<T>(&self, visitor: &mut dyn Visitor<'src, T>) -> T {
         match self {
             Stmt::Expr(expr) => visitor.visit_expression_stmt(expr),
             Stmt::Block(stmts) => visitor.visit_block_stmt(stmts),
@@ -91,7 +97,11 @@ impl Stmt {
         }
     }
 
-    pub fn if_stmt(condition: Expr, then_branch: Stmt, else_branch: Option<Stmt>) -> Self {
+    pub fn if_stmt(
+        condition: Expr<'src>,
+        then_branch: Stmt<'src>,
+        else_branch: Option<Stmt<'src>>,
+    ) -> Self {
         Stmt::If {
             condition,
             then_branch: Box::new(then_branch),
@@ -99,21 +109,21 @@ impl Stmt {
         }
     }
 
-    pub fn while_stmt(condition: Expr, body: Stmt) -> Self {
+    pub fn while_stmt(condition: Expr<'src>, body: Stmt<'src>) -> Self {
         Stmt::While {
             condition,
             body: Box::new(body),
         }
     }
 
-    pub fn func_declaration(func_decl: FunctionDecl) -> Self {
+    pub fn func_declaration(func_decl: FunctionDecl<'src>) -> Self {
         Stmt::FunctionDecl(Rc::new(func_decl))
     }
 
     pub fn struct_declaration(
-        name: Token,
-        fields: Vec<Token>,
-        methods: Vec<Rc<FunctionDecl>>,
+        name: Token<'src>,
+        fields: Vec<Token<'src>>,
+        methods: Vec<Rc<FunctionDecl<'src>>>,
     ) -> Self {
         Stmt::StructDecl(StructDecl {
             name,
@@ -122,7 +132,12 @@ impl Stmt {
         })
     }
 
-    pub fn for_stmt(var: Token, start: Expr, end: Expr, body: Stmt) -> Self {
+    pub fn for_stmt(
+        var: Token<'src>,
+        start: Expr<'src>,
+        end: Expr<'src>,
+        body: Stmt<'src>,
+    ) -> Self {
         Stmt::For {
             var,
             start,

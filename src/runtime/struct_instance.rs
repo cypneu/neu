@@ -9,25 +9,25 @@ use crate::runtime::value::Value;
 use super::runtime_error::RuntimeError;
 
 #[derive(Clone)]
-pub struct StructInstance {
-    pub struct_decl: StructDeclaration,
-    fields: HashMap<String, Rc<Value>>,
+pub struct StructInstance<'src> {
+    pub struct_decl: StructDeclaration<'src>,
+    fields: HashMap<&'src str, Rc<Value<'src>>>,
 }
 
-impl StructInstance {
-    pub fn new(struct_decl: StructDeclaration) -> Self {
+impl<'src> StructInstance<'src> {
+    pub fn new(struct_decl: StructDeclaration<'src>) -> Self {
         StructInstance {
             struct_decl,
             fields: HashMap::new(),
         }
     }
 
-    pub fn get(&self, name: &Token) -> Result<Rc<Value>, RuntimeError> {
-        if let Some(value) = self.fields.get(&name.lexeme) {
+    pub fn get(&self, name: &Token<'src>) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
+        if let Some(value) = self.fields.get(name.lexeme) {
             return Ok(Rc::clone(value));
         }
 
-        if let Some(method) = self.struct_decl.methods.get(&name.lexeme) {
+        if let Some(method) = self.struct_decl.methods.get(name.lexeme) {
             return Ok(Rc::new(Value::Callable(Rc::clone(method))));
         }
 
@@ -35,20 +35,24 @@ impl StructInstance {
         Err(RuntimeError::with_token(name, &msg))
     }
 
-    pub fn set(&mut self, name: &Token, value: Value) -> Result<(), RuntimeError> {
-        if !self.struct_decl.fields.contains(&name.lexeme) {
+    pub fn set(
+        &mut self,
+        name: &Token<'src>,
+        value: Rc<Value<'src>>,
+    ) -> Result<(), RuntimeError<'src>> {
+        if !self.struct_decl.fields.contains(name.lexeme) {
             let msg = format!(
                 "'{}' is not a field of struct {}",
                 name.lexeme, self.struct_decl.name
             );
             return Err(RuntimeError::with_token(name, &msg));
         }
-        self.fields.insert(name.lexeme.to_string(), Rc::new(value));
+        self.fields.insert(name.lexeme, value);
         Ok(())
     }
 }
 
-impl fmt::Display for StructInstance {
+impl fmt::Display for StructInstance<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} instance", self.struct_decl.name)
     }

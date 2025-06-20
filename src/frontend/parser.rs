@@ -19,33 +19,33 @@ const FACTOR_OPS: [TokenType; 3] = [TokenType::Slash, TokenType::Star, TokenType
 const UNARY_OPS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
 #[derive(Debug)]
-pub struct ParseError {
-    pub token: Token,
+pub struct ParseError<'src> {
+    pub token: Token<'src>,
     pub location: String,
     pub message: String,
 }
 
-impl ParseError {
-    pub fn new(token: &Token, location: String, message: &str) -> Self {
+impl<'src> ParseError<'src> {
+    pub fn new(token: Token<'src>, location: String, message: &str) -> Self {
         Self {
             message: message.to_string(),
             location,
-            token: token.clone(),
+            token,
         }
     }
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+type ParseResult<'src, T> = Result<T, ParseError<'src>>;
 
 #[derive(Debug)]
-pub struct Parser {
-    tokens: Peekable<IntoIter<Token>>,
+pub struct Parser<'src> {
+    tokens: Peekable<IntoIter<Token<'src>>>,
     function_nesting_depth: u32,
     loop_nesting_depth: u32,
 }
 
-impl Parser {
-    pub fn parse(tokens: Vec<Token>) -> (Vec<Stmt>, Vec<ParseError>) {
+impl<'src> Parser<'src> {
+    pub fn parse(tokens: Vec<Token<'src>>) -> (Vec<Stmt<'src>>, Vec<ParseError<'src>>) {
         let mut parser = Parser::new(tokens);
 
         let (mut statements, mut errors) = (Vec::new(), Vec::new());
@@ -60,8 +60,8 @@ impl Parser {
     }
 }
 
-impl Parser {
-    fn declaration(&mut self) -> ParseResult<Stmt> {
+impl<'src> Parser<'src> {
+    fn declaration(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let result = match self.peek().kind {
             TokenType::Struct => self.struct_declaration(),
             TokenType::Fn => self.function_declaration(),
@@ -74,7 +74,7 @@ impl Parser {
         result
     }
 
-    fn statement(&mut self) -> ParseResult<Stmt> {
+    fn statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         match self.peek().kind {
             TokenType::LeftBrace => self.block(),
             TokenType::If => self.if_statement(),
@@ -87,7 +87,7 @@ impl Parser {
         }
     }
 
-    fn expression_statement(&mut self) -> ParseResult<Stmt> {
+    fn expression_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let expr = self.expression()?;
 
         let msg = "Expect ';' after expression statement.";
@@ -96,7 +96,7 @@ impl Parser {
         Ok(Stmt::Expr(expr))
     }
 
-    fn block(&mut self) -> ParseResult<Stmt> {
+    fn block(&mut self) -> ParseResult<'src, Stmt<'src>> {
         self.consume(TokenType::LeftBrace, "Expected '{' to start a block.")?;
         let mut statements = Vec::new();
 
@@ -108,7 +108,7 @@ impl Parser {
         Ok(Stmt::Block(statements))
     }
 
-    fn if_statement(&mut self) -> ParseResult<Stmt> {
+    fn if_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         self.consume(TokenType::If, "Expected 'if'.")?;
         let condition = self.or(false)?;
         let then_branch = self.block()?;
@@ -130,7 +130,7 @@ impl Parser {
         ))
     }
 
-    fn while_statement(&mut self) -> ParseResult<Stmt> {
+    fn while_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         self.consume(TokenType::While, "Expected 'while'.")?;
         let condition = self.or(false)?;
         self.loop_nesting_depth += 1;
@@ -139,7 +139,7 @@ impl Parser {
         Ok(Stmt::while_stmt(condition, body))
     }
 
-    fn for_statement(&mut self) -> ParseResult<Stmt> {
+    fn for_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         self.consume(TokenType::For, "Expeced 'for'.")?;
         let var = self.consume(TokenType::Identifier, "Expected loop variable")?;
         self.consume(TokenType::In, "Expected 'in' in for loop")?;
@@ -155,10 +155,10 @@ impl Parser {
         Ok(Stmt::for_stmt(var, start, end, body))
     }
 
-    fn return_statement(&mut self) -> ParseResult<Stmt> {
+    fn return_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let keyword = self.consume(TokenType::Return, "Expected 'return'.")?;
         if self.function_nesting_depth == 0 {
-            return Err(self.error(&keyword, "Return can be used only within a function."));
+            return Err(self.error(keyword, "Return can be used only within a function."));
         }
 
         let value = if !self.check(TokenType::Semicolon) {
@@ -171,20 +171,20 @@ impl Parser {
         Ok(Stmt::Return { value })
     }
 
-    fn break_statement(&mut self) -> ParseResult<Stmt> {
+    fn break_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let keyword = self.consume(TokenType::Break, "Expected 'break'.")?;
         if self.loop_nesting_depth == 0 {
-            return Err(self.error(&keyword, "Break can be used only within a loop."));
+            return Err(self.error(keyword, "Break can be used only within a loop."));
         }
 
         self.consume(TokenType::Semicolon, "Expected ';' after break statement.")?;
         Ok(Stmt::Break)
     }
 
-    fn continue_statement(&mut self) -> ParseResult<Stmt> {
+    fn continue_statement(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let keyword = self.consume(TokenType::Continue, "Expected 'continue'.")?;
         if self.loop_nesting_depth == 0 {
-            return Err(self.error(&keyword, "Continue can be used only within a loop."));
+            return Err(self.error(keyword, "Continue can be used only within a loop."));
         }
 
         self.consume(
@@ -194,7 +194,7 @@ impl Parser {
         Ok(Stmt::Continue)
     }
 
-    fn struct_declaration(&mut self) -> ParseResult<Stmt> {
+    fn struct_declaration(&mut self) -> ParseResult<'src, Stmt<'src>> {
         self.consume(TokenType::Struct, "Expected 'struct'.")?;
         let name = self.consume(TokenType::Identifier, "Expected struct name")?;
         self.consume(TokenType::LeftBrace, "Expected '{' before struct body")?;
@@ -211,14 +211,17 @@ impl Parser {
         Ok(Stmt::struct_declaration(name, fields, methods))
     }
 
-    fn function_declaration(&mut self) -> ParseResult<Stmt> {
+    fn function_declaration(&mut self) -> ParseResult<'src, Stmt<'src>> {
         let func_decl = self.parse_callable_declaration("function")?;
         Ok(Stmt::func_declaration(func_decl))
     }
 }
 
-impl Parser {
-    fn parse_callable_declaration(&mut self, kind: &str) -> Result<FunctionDecl, ParseError> {
+impl<'src> Parser<'src> {
+    fn parse_callable_declaration(
+        &mut self,
+        kind: &str,
+    ) -> Result<FunctionDecl<'src>, ParseError<'src>> {
         self.consume(TokenType::Fn, &format!("Expected '{}'.", kind))?;
         let name = self.consume(TokenType::Identifier, &format!("Expected {} name.", kind))?;
 
@@ -234,18 +237,16 @@ impl Parser {
         Ok(FunctionDecl { name, params, body })
     }
 
-    fn parse_parameter_list(&mut self, kind: &str) -> ParseResult<Vec<Token>> {
-        self.consume(
-            TokenType::LeftParen,
-            &format!("Expected '(' in {} declaration", kind),
-        )?;
+    fn parse_parameter_list(&mut self, kind: &str) -> ParseResult<'src, Vec<Token<'src>>> {
+        let msg = format!("Expected '(' in {} declaration", kind);
+        self.consume(TokenType::LeftParen, &msg)?;
 
         let mut params = Vec::new();
         if !self.check(TokenType::RightParen) {
             loop {
                 if params.len() >= 255 {
                     let token = self.peek().clone();
-                    return Err(self.error(&token, "Can't have more than 255 parameters."));
+                    return Err(self.error(token, "Can't have more than 255 parameters."));
                 }
 
                 params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
@@ -262,18 +263,20 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_struct_declaration_fields(&mut self, name: &Token) -> ParseResult<Vec<Token>> {
+    fn parse_struct_declaration_fields(
+        &mut self,
+        name: &Token<'src>,
+    ) -> ParseResult<'src, Vec<Token<'src>>> {
         use std::collections::HashSet;
 
         let mut fields = Vec::new();
-        let mut seen = HashSet::<String>::new();
+        let mut seen = HashSet::new();
 
         while self.check(TokenType::Identifier) {
             let field = self.advance();
-            if !seen.insert(field.lexeme.clone()) {
-                return Err(
-                    self.error(&field, &format!("Duplicate field name '{}'.", field.lexeme))
-                );
+            if !seen.insert(field.lexeme) {
+                let msg = format!("Duplicate field name '{}'.", &field.lexeme);
+                return Err(self.error(field, &msg));
             }
             fields.push(field);
 
@@ -285,19 +288,19 @@ impl Parser {
                 break;
             }
 
-            return Err(self.error(name, "Expected ',' before method declarations"));
+            return Err(self.error(name.clone(), "Expected ',' before method declarations"));
         }
 
         Ok(fields)
     }
 }
 
-impl Parser {
-    fn expression(&mut self) -> ParseResult<Expr> {
+impl<'src> Parser<'src> {
+    fn expression(&mut self) -> ParseResult<'src, Expr<'src>> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> ParseResult<Expr> {
+    fn assignment(&mut self) -> ParseResult<'src, Expr<'src>> {
         let lhs = self.or(true)?;
         if !self.check(TokenType::Equal) {
             return Ok(lhs);
@@ -309,11 +312,11 @@ impl Parser {
         match lhs {
             Expr::Variable { name } => Ok(Expr::assign(name, rhs)),
             Expr::Get { name, expr } => Ok(Expr::set(expr, name, rhs)),
-            _ => Err(self.error(&equals, "Invalid target assignment")),
+            _ => Err(self.error(equals, "Invalid target assignment")),
         }
     }
 
-    fn or(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn or(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         let mut expr = self.and(struct_ok)?;
 
         while self.check(TokenType::Or) {
@@ -325,7 +328,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn and(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn and(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         let mut expr = self.equality(struct_ok)?;
 
         while self.check(TokenType::And) {
@@ -337,23 +340,23 @@ impl Parser {
         Ok(expr)
     }
 
-    fn equality(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn equality(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         self.binary_expr(Self::comparison, struct_ok, &EQ_OPS)
     }
 
-    fn comparison(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn comparison(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         self.binary_expr(Self::term, struct_ok, &CMP_OPS)
     }
 
-    fn term(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn term(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         self.binary_expr(Self::factor, struct_ok, &TERM_OPS)
     }
 
-    fn factor(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn factor(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         self.binary_expr(Self::unary, struct_ok, &FACTOR_OPS)
     }
 
-    fn unary(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn unary(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         if self.check_any(&UNARY_OPS) {
             let operator = self.advance();
             let right = self.unary(struct_ok)?;
@@ -363,7 +366,7 @@ impl Parser {
         self.call(struct_ok)
     }
 
-    fn call(&mut self, struct_ok: bool) -> ParseResult<Expr> {
+    fn call(&mut self, struct_ok: bool) -> ParseResult<'src, Expr<'src>> {
         let mut expr = self.primary()?;
 
         loop {
@@ -383,21 +386,19 @@ impl Parser {
         Ok(expr)
     }
 
-    fn struct_literal(&mut self, initializer: Expr) -> ParseResult<Expr> {
+    fn struct_literal(&mut self, initializer: Expr<'src>) -> ParseResult<'src, Expr<'src>> {
         use std::collections::HashSet;
 
         let mut fields = Vec::<(Token, Expr)>::new();
-        let mut seen = HashSet::<String>::new();
+        let mut seen = HashSet::new();
 
         if !self.check(TokenType::RightBrace) {
             loop {
                 let name = self.consume(TokenType::Identifier, "Expected field name.")?;
 
-                if !seen.insert(name.lexeme.clone()) {
-                    return Err(self.error(
-                        &name,
-                        &format!("Duplicate field '{}' in struct literal.", name.lexeme),
-                    ));
+                if !seen.insert(name.lexeme) {
+                    let msg = format!("Duplicate field '{}' in struct literal.", name.lexeme);
+                    return Err(self.error(name, &msg));
                 }
 
                 self.consume(TokenType::Colon, "Expected ':' after field name.")?;
@@ -414,7 +415,7 @@ impl Parser {
         Ok(Expr::struct_init(initializer, fields))
     }
 
-    fn primary(&mut self) -> ParseResult<Expr> {
+    fn primary(&mut self) -> ParseResult<'src, Expr<'src>> {
         let token = self.advance();
         let expr = match token.kind {
             TokenType::False => false.into(),
@@ -427,20 +428,20 @@ impl Parser {
                 Expr::group(expression)
             }
             TokenType::Identifier => Expr::variable(token),
-            _ => return Err(self.error(&token, "Expected expression")),
+            _ => return Err(self.error(token, "Expected expression")),
         };
         Ok(expr)
     }
 }
 
-impl Parser {
-    fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
+impl<'src> Parser<'src> {
+    fn finish_call(&mut self, callee: Expr<'src>) -> ParseResult<'src, Expr<'src>> {
         let mut arguments = Vec::new();
         if !self.check(TokenType::RightParen) {
             loop {
                 if arguments.len() >= 255 {
                     let token = self.peek().clone();
-                    return Err(self.error(&token, "Can't have more than 255 arguments."));
+                    return Err(self.error(token, "Can't have more than 255 arguments."));
                 }
 
                 arguments.push(self.or(true)?);
@@ -459,9 +460,9 @@ impl Parser {
         mut operand: F,
         struct_ok: bool,
         operators: &[TokenType],
-    ) -> ParseResult<Expr>
+    ) -> ParseResult<'src, Expr<'src>>
     where
-        F: FnMut(&mut Self, bool) -> ParseResult<Expr>,
+        F: FnMut(&mut Self, bool) -> ParseResult<'src, Expr<'src>>,
     {
         let mut expr = operand(self, struct_ok)?;
 
@@ -474,8 +475,8 @@ impl Parser {
     }
 }
 
-impl Parser {
-    fn error(&mut self, token: &Token, message: &str) -> ParseError {
+impl<'src> Parser<'src> {
+    fn error(&self, token: Token<'src>, message: &str) -> ParseError<'src> {
         let location = match token.kind {
             TokenType::Eof => " at end".into(),
             _ => format!(" at '{}'", token.lexeme),
@@ -503,12 +504,12 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, kind: TokenType, message: &str) -> Result<Token, ParseError> {
+    fn consume(&mut self, kind: TokenType, message: &str) -> Result<Token<'src>, ParseError<'src>> {
         if self.peek().kind == kind {
             Ok(self.advance())
         } else {
             let token = self.peek().clone();
-            Err(self.error(&token, message))
+            Err(self.error(token, message))
         }
     }
 
@@ -533,15 +534,15 @@ impl Parser {
         self.peek().kind == kind
     }
 
-    fn advance(&mut self) -> Token {
+    fn advance(&mut self) -> Token<'src> {
         self.tokens.next().expect("scanner guaranteed EOF")
     }
 
-    fn peek(&mut self) -> &Token {
+    fn peek(&mut self) -> &Token<'src> {
         self.tokens.peek().unwrap()
     }
 
-    fn new(tokens: Vec<Token>) -> Self {
+    fn new(tokens: Vec<Token<'src>>) -> Self {
         let tokens = tokens.into_iter().peekable();
         Parser {
             tokens,

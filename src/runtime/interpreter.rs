@@ -19,25 +19,25 @@ use crate::runtime::value::Value;
 use super::bound_method::BoundMethod;
 use super::callable::CallableObj;
 
-pub type EnvRef = Rc<RefCell<Environment>>;
+pub type EnvRef<'src> = Rc<RefCell<Environment<'src>>>;
 
-pub struct Interpreter {
-    pub environment: EnvRef,
-    pub globals: EnvRef,
+pub struct Interpreter<'src> {
+    pub environment: EnvRef<'src>,
+    pub globals: EnvRef<'src>,
 }
 
-pub enum ExecutionFlow {
+pub enum ExecutionFlow<'src> {
     Normal,
     Break,
     Continue,
-    Return(Value),
+    Return(Rc<Value<'src>>),
 }
 
-type ExprEvalResult = Result<Value, RuntimeError>;
-type StmtEvalResult = Result<ExecutionFlow, RuntimeError>;
+type ExprEvalResult<'src> = Result<Rc<Value<'src>>, RuntimeError<'src>>;
+type StmtEvalResult<'src> = Result<ExecutionFlow<'src>, RuntimeError<'src>>;
 
-impl Interpreter {
-    pub fn interpret(statements: Vec<Stmt>) -> Result<(), Vec<RuntimeError>> {
+impl<'src> Interpreter<'src> {
+    pub fn interpret(statements: Vec<Stmt<'src>>) -> Result<(), Vec<RuntimeError<'src>>> {
         let mut interpreter = Interpreter::new();
 
         let mut errors = Vec::new();
@@ -56,30 +56,30 @@ impl Interpreter {
 
     pub fn execute_callable_body(
         &mut self,
-        stmts: &[Stmt],
-        environment: Environment,
-    ) -> StmtEvalResult {
+        stmts: &[Stmt<'src>],
+        environment: Environment<'src>,
+    ) -> StmtEvalResult<'src> {
         let new_env = Rc::new(RefCell::new(environment));
         self.with_new_environment(new_env, |interpreter| interpreter.execute_statements(stmts))
     }
 }
 
-impl stmt::Visitor<StmtEvalResult> for Interpreter {
-    fn visit_expression_stmt(&mut self, expr: &Expr) -> StmtEvalResult {
+impl<'src> stmt::Visitor<'src, StmtEvalResult<'src>> for Interpreter<'src> {
+    fn visit_expression_stmt(&mut self, expr: &Expr<'src>) -> StmtEvalResult<'src> {
         self.evaluate(expr)?;
         Ok(ExecutionFlow::Normal)
     }
 
-    fn visit_block_stmt(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
+    fn visit_block_stmt(&mut self, stmts: &[Stmt<'src>]) -> StmtEvalResult<'src> {
         self.execute_statements(stmts)
     }
 
     fn visit_if_stmt(
         &mut self,
-        condition: &Expr,
-        then_branch: &Stmt,
-        else_branch: Option<&Stmt>,
-    ) -> StmtEvalResult {
+        condition: &Expr<'src>,
+        then_branch: &Stmt<'src>,
+        else_branch: Option<&Stmt<'src>>,
+    ) -> StmtEvalResult<'src> {
         let truth = self
             .evaluate(condition)?
             .as_bool()
@@ -92,7 +92,11 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         }
     }
 
-    fn visit_while_stmt(&mut self, condition: &Expr, body: &Stmt) -> StmtEvalResult {
+    fn visit_while_stmt(
+        &mut self,
+        condition: &Expr<'src>,
+        body: &Stmt<'src>,
+    ) -> StmtEvalResult<'src> {
         let parent = Rc::clone(&self.environment);
         let new_env = Rc::new(RefCell::new(Environment::new(Some(parent))));
 
@@ -115,11 +119,11 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
 
     fn visit_for_stmt(
         &mut self,
-        var: &Token,
-        start: &Expr,
-        end: &Expr,
-        body: &Stmt,
-    ) -> StmtEvalResult {
+        var: &Token<'src>,
+        start: &Expr<'src>,
+        end: &Expr<'src>,
+        body: &Stmt<'src>,
+    ) -> StmtEvalResult<'src> {
         let start_val = self.evaluate(start)?;
         let mut i = self.expect_integer(start_val, var)?;
 
@@ -133,7 +137,7 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
             interpreter
                 .environment
                 .borrow_mut()
-                .assign(&var.lexeme, Value::Number(i as f64));
+                .assign(var.lexeme, Rc::new(Value::Number(i as f64)));
 
             while i < end {
                 match interpreter.execute(body)? {
@@ -145,22 +149,25 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
                 interpreter
                     .environment
                     .borrow_mut()
-                    .assign(&var.lexeme, Value::Number(i as f64));
+                    .assign(var.lexeme, Rc::new(Value::Number(i as f64)));
             }
 
             Ok(ExecutionFlow::Normal)
         })
     }
 
-    fn visit_break_stmt(&mut self) -> StmtEvalResult {
+    fn visit_break_stmt(&mut self) -> StmtEvalResult<'src> {
         Ok(ExecutionFlow::Break)
     }
 
-    fn visit_continue_stmt(&mut self) -> StmtEvalResult {
+    fn visit_continue_stmt(&mut self) -> StmtEvalResult<'src> {
         Ok(ExecutionFlow::Continue)
     }
 
-    fn visit_func_declaration(&mut self, declaration: &Rc<FunctionDecl>) -> StmtEvalResult {
+    fn visit_func_declaration(
+        &mut self,
+        declaration: &Rc<FunctionDecl<'src>>,
+    ) -> StmtEvalResult<'src> {
         let function = Function {
             declaration: Rc::clone(declaration),
             closure: Rc::clone(&self.environment),
@@ -169,65 +176,70 @@ impl stmt::Visitor<StmtEvalResult> for Interpreter {
         let value = Value::Callable(callable);
         self.environment
             .borrow_mut()
-            .assign(&declaration.name.lexeme, value);
+            .assign(declaration.name.lexeme, Rc::new(value));
         Ok(ExecutionFlow::Normal)
     }
 
-    fn visit_return_stmt(&mut self, value: &Option<Expr>) -> StmtEvalResult {
+    fn visit_return_stmt(&mut self, value: &Option<Expr<'src>>) -> StmtEvalResult<'src> {
         let return_value = if let Some(value) = value {
             self.evaluate(value)?
         } else {
-            Value::None
+            Rc::new(Value::None)
         };
         Ok(ExecutionFlow::Return(return_value))
     }
 
-    fn visit_struct_declaration(&mut self, declaration: &StructDecl) -> StmtEvalResult {
+    fn visit_struct_declaration(&mut self, declaration: &StructDecl<'src>) -> StmtEvalResult<'src> {
         let mut environment = self.environment.borrow_mut();
-        environment.define(&declaration.name.lexeme, Value::None);
+        environment.define(declaration.name.lexeme, Rc::new(Value::None));
 
-        let mut methods: HashMap<String, CallableObj> = HashMap::new();
+        let mut methods: HashMap<&str, CallableObj> = HashMap::new();
         for method in &declaration.methods {
             let function = Function {
                 declaration: Rc::clone(method),
                 closure: Rc::clone(&self.environment),
             };
-            methods.insert(method.name.lexeme.to_string(), Rc::new(function));
+            methods.insert(method.name.lexeme, Rc::new(function));
         }
 
         let struct_decl = Value::StructDecl(StructDeclaration {
-            name: declaration.name.lexeme.to_string(),
-            fields: declaration
-                .fields
-                .iter()
-                .map(|t| t.lexeme.clone())
-                .collect(),
+            name: declaration.name.lexeme,
+            fields: declaration.fields.iter().map(|t| t.lexeme).collect(),
             methods,
         });
-        environment.assign(&declaration.name.lexeme, struct_decl);
+        environment.assign(declaration.name.lexeme, Rc::new(struct_decl));
         Ok(ExecutionFlow::Normal)
     }
 }
 
-impl expr::Visitor<ExprEvalResult> for Interpreter {
-    fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> ExprEvalResult {
+impl<'src> expr::Visitor<'src, ExprEvalResult<'src>> for Interpreter<'src> {
+    fn visit_unary_expr(
+        &mut self,
+        operator: &Token<'src>,
+        right: &Expr<'src>,
+    ) -> ExprEvalResult<'src> {
         let value = self.evaluate(right)?;
 
         use TokenType::*;
         match operator.kind {
             Minus => {
-                let value = self.expect_number(value, operator)?;
-                Ok(Value::Number(-value))
+                let value = self.expect_number(&value, operator)?;
+                Ok(Rc::new(Value::Number(-value)))
             }
             Bang => {
                 let value = self.expect_bool(value, operator)?;
-                Ok(Value::Boolean(!value))
+                Ok(Rc::new(Value::Boolean(!value)))
             }
             _ => unreachable!("Unexpected unary operator"),
         }
     }
 
-    fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> ExprEvalResult {
+    fn visit_binary_expr(
+        &mut self,
+        left: &Expr<'src>,
+        operator: &Token<'src>,
+        right: &Expr<'src>,
+    ) -> ExprEvalResult<'src> {
         let left = self.evaluate(left)?;
         let right = self.evaluate(right)?;
 
@@ -248,36 +260,44 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
                 matches!(o, Ordering::Less | Ordering::Equal)
             }),
 
-            BangEqual => Ok(Value::Boolean(!(left == right))),
-            EqualEqual => Ok(Value::Boolean(left == right)),
+            BangEqual => Ok(Rc::new(Value::Boolean(!(left == right)))),
+            EqualEqual => Ok(Rc::new(Value::Boolean(left == right))),
 
             _ => unreachable!("Unknown binary operator"),
         }
     }
 
-    fn visit_literal_expr(&mut self, value: &Literal) -> ExprEvalResult {
-        Ok(Value::from(value.clone()))
+    fn visit_literal_expr(&mut self, value: &Literal<'src>) -> ExprEvalResult<'src> {
+        Ok(Rc::new(Value::from(value.clone())))
     }
 
-    fn visit_grouping_expr(&mut self, expr: &Expr) -> ExprEvalResult {
+    fn visit_grouping_expr(&mut self, expr: &Expr<'src>) -> ExprEvalResult<'src> {
         self.evaluate(expr)
     }
 
-    fn visit_variable_expr(&mut self, name: &Token) -> ExprEvalResult {
+    fn visit_variable_expr(&mut self, name: &Token<'src>) -> ExprEvalResult<'src> {
         let env = self.environment.borrow();
-        let value = env.get(name)?;
-        Ok(value)
+        env.get(name)
     }
 
-    fn visit_assignment_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
+    fn visit_assignment_expr(
+        &mut self,
+        name: &Token<'src>,
+        expr: &Expr<'src>,
+    ) -> ExprEvalResult<'src> {
         let value = self.evaluate(expr)?;
         self.environment
             .borrow_mut()
-            .assign(&name.lexeme, value.clone());
+            .assign(name.lexeme, Rc::clone(&value));
         Ok(value)
     }
 
-    fn visit_logical_expr(&mut self, left: &Expr, op: &Token, right: &Expr) -> ExprEvalResult {
+    fn visit_logical_expr(
+        &mut self,
+        left: &Expr<'src>,
+        op: &Token<'src>,
+        right: &Expr<'src>,
+    ) -> ExprEvalResult<'src> {
         let left_val = self.evaluate(left)?;
         let left_bool = left_val
             .as_bool()
@@ -296,39 +316,49 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         }
     }
 
-    fn visit_call_expr(&mut self, callee: &Expr, arguments: &[Expr]) -> ExprEvalResult {
+    fn visit_call_expr(
+        &mut self,
+        callee: &Expr<'src>,
+        arguments: &[Expr<'src>],
+    ) -> ExprEvalResult<'src> {
         let callee = self.evaluate(callee)?;
 
-        let mut evaluated_arguments = Vec::new();
+        let callable = match &*callee {
+            Value::Callable(f) => f,
+            other => {
+                let msg = format!("Attempted to call a non-callable value: {:?}", other);
+                return Err(RuntimeError::new(&msg));
+            }
+        };
+
+        let mut evaluated_arguments = Vec::with_capacity(arguments.len());
         for argument in arguments {
             evaluated_arguments.push(self.evaluate(argument)?);
         }
 
-        match callee {
-            Value::Callable(callee) => {
-                let got = evaluated_arguments.len();
-                match callee.arity() {
-                    Some(n) if got == n => Ok(callee.call(self, evaluated_arguments)?),
-                    None => Ok(callee.call(self, evaluated_arguments)?),
-                    Some(n) => {
-                        let msg = format!("Expected {} arguments, but got {}.", n, got);
-                        Err(RuntimeError::new(&msg))
-                    }
-                }
+        if let Some(expected) = callable.arity() {
+            let got = evaluated_arguments.len();
+            if got != expected {
+                let msg = format!("Expected {} arguments, but got {}.", expected, got);
+                return Err(RuntimeError::new(&msg));
             }
-            _ => Err(RuntimeError::new("Can only call functions.")),
         }
+
+        callable.call(self, evaluated_arguments)
     }
 
     fn visit_struct_init_expr(
         &mut self,
-        initializer: &Expr,
-        fields: &[(Token, Expr)],
-    ) -> ExprEvalResult {
+        initializer: &Expr<'src>,
+        fields: &[(Token<'src>, Expr<'src>)],
+    ) -> ExprEvalResult<'src> {
         let struct_initializer = self.evaluate(initializer)?;
-        let Value::StructDecl(struct_decl) = struct_initializer else {
-            let msg = "Expected a struct type for initialization.";
-            return Err(RuntimeError::new(msg));
+        let struct_decl = match &*struct_initializer {
+            Value::StructDecl(decl) => decl.clone(),
+            _ => {
+                let msg = "Expected a struct type for initialization.";
+                return Err(RuntimeError::new(msg));
+            }
         };
 
         if struct_decl.fields.len() != fields.len() {
@@ -337,20 +367,20 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         }
 
         let mut instance = StructInstance::new(struct_decl);
-
         for (name, expr) in fields {
             let value = self.evaluate(expr)?;
             instance.set(name, value)?;
         }
 
-        Ok(Value::StructInstance(Rc::new(RefCell::new(instance))))
+        let struct_instance = Value::StructInstance(Rc::new(RefCell::new(instance)));
+        Ok(Rc::new(struct_instance))
     }
 
-    fn visit_get_expr(&mut self, name: &Token, expr: &Expr) -> ExprEvalResult {
+    fn visit_get_expr(&mut self, name: &Token<'src>, expr: &Expr<'src>) -> ExprEvalResult<'src> {
         let target = self.evaluate(expr)?;
-        match target {
+        match &*target {
             Value::StructInstance(instance) => self.property_from_instance(name, instance),
-            Value::StructDecl(decl) => self.property_from_struct_decl(name, &decl),
+            Value::StructDecl(decl) => self.property_from_struct_decl(name, decl),
             _ => Err(RuntimeError::with_token(
                 name,
                 "Only structs or struct instances have properties.",
@@ -358,23 +388,26 @@ impl expr::Visitor<ExprEvalResult> for Interpreter {
         }
     }
 
-    fn visit_set_expr(&mut self, name: &Token, expr: &Expr, value: &Expr) -> ExprEvalResult {
+    fn visit_set_expr(
+        &mut self,
+        name: &Token<'src>,
+        expr: &Expr<'src>,
+        value: &Expr<'src>,
+    ) -> ExprEvalResult<'src> {
         let struct_instance = self.evaluate(expr)?;
 
-        if let Value::StructInstance(s) = struct_instance {
+        if let Value::StructInstance(s) = &*struct_instance {
             let value = self.evaluate(value)?;
             s.borrow_mut().set(name, value.clone())?;
             Ok(value)
         } else {
-            Err(RuntimeError::with_token(
-                name,
-                "Only instances have fields.",
-            ))
+            let msg = "Only instances have fields.";
+            Err(RuntimeError::with_token(name, msg))
         }
     }
 }
 
-impl Interpreter {
+impl<'src> Interpreter<'src> {
     fn new() -> Self {
         let mut environment = Environment::new(None);
         register_natives(&mut environment);
@@ -387,7 +420,7 @@ impl Interpreter {
         }
     }
 
-    fn with_new_environment<F, R>(&mut self, environment: EnvRef, f: F) -> R
+    fn with_new_environment<F, R>(&mut self, environment: EnvRef<'src>, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
     {
@@ -401,29 +434,33 @@ impl Interpreter {
 
     fn property_from_instance(
         &self,
-        name: &Token,
-        instance: Rc<RefCell<StructInstance>>,
-    ) -> ExprEvalResult {
+        name: &Token<'src>,
+        instance: &Rc<RefCell<StructInstance<'src>>>,
+    ) -> ExprEvalResult<'src> {
         let value = instance.borrow().get(name)?;
 
         if instance
             .borrow()
             .struct_decl
             .methods
-            .contains_key(&name.lexeme)
+            .contains_key(name.lexeme)
         {
             if let Value::Callable(method) = value.as_ref() {
                 return self.bind_instance_method(name, method, instance);
             }
         }
 
-        Ok(value.as_ref().clone())
+        Ok(value)
     }
 
-    fn property_from_struct_decl(&self, name: &Token, decl: &StructDeclaration) -> ExprEvalResult {
+    fn property_from_struct_decl(
+        &self,
+        name: &Token<'src>,
+        decl: &StructDeclaration<'src>,
+    ) -> ExprEvalResult<'src> {
         decl.methods
-            .get(&name.lexeme)
-            .map(|m| Value::Callable(Rc::clone(m)))
+            .get(name.lexeme)
+            .map(|m| Rc::new(Value::Callable(Rc::clone(m))))
             .ok_or_else(|| {
                 RuntimeError::with_token(name, &format!("Undefined property '{}'.", name.lexeme))
             })
@@ -431,55 +468,54 @@ impl Interpreter {
 
     fn bind_instance_method(
         &self,
-        name: &Token,
-        method: &CallableObj,
-        receiver: Rc<RefCell<StructInstance>>,
-    ) -> ExprEvalResult {
+        name: &Token<'src>,
+        method: &CallableObj<'src>,
+        receiver: &Rc<RefCell<StructInstance<'src>>>,
+    ) -> ExprEvalResult<'src> {
         if method.arity() == Some(0) {
-            Err(RuntimeError::with_token(
-                name,
-                "Static method cannot be called on an instance.",
-            ))
+            let msg = "Static method cannot be called on an instance.";
+            Err(RuntimeError::with_token(name, msg))
         } else {
-            Ok(Value::Callable(BoundMethod::new(
-                Value::StructInstance(receiver),
+            let bm = BoundMethod::new(
+                Rc::new(Value::StructInstance(Rc::clone(receiver))),
                 Rc::clone(method),
-            )))
+            );
+            Ok(Rc::new(Value::Callable(bm)))
         }
     }
 
     fn eval_numeric_binop<T, F>(
         &self,
-        left: Value,
-        right: Value,
-        operator: &Token,
+        left: Rc<Value<'src>>,
+        right: Rc<Value<'src>>,
+        operator: &Token<'src>,
         op: F,
-    ) -> ExprEvalResult
+    ) -> ExprEvalResult<'src>
     where
         F: FnOnce(f64, f64) -> T,
-        T: Into<Value>,
+        T: Into<Value<'src>>,
     {
-        let l = self.expect_number(left, operator)?;
-        let r = self.expect_number(right, operator)?;
-        Ok(op(l, r).into())
+        let l = self.expect_number(&left, operator)?;
+        let r = self.expect_number(&right, operator)?;
+        Ok(Rc::new(op(l, r).into()))
     }
 
     fn eval_order_binop<F>(
         &self,
-        left: Value,
-        right: Value,
-        operator: &Token,
+        left: Rc<Value>,
+        right: Rc<Value>,
+        operator: &Token<'src>,
         pred: F,
-    ) -> ExprEvalResult
+    ) -> ExprEvalResult<'src>
     where
         F: FnOnce(Ordering) -> bool,
     {
         use Value::*;
-        let ord = match (left, right) {
+        let ord = match (&*left, &*right) {
             (Number(a), Number(b)) => a
-                .partial_cmp(&b)
+                .partial_cmp(b)
                 .ok_or_else(|| RuntimeError::with_token(operator, "NaN is unordered"))?,
-            (String(a), String(b)) => a.cmp(&b),
+            (String(a), String(b)) => a.cmp(b),
             _ => {
                 return Err(RuntimeError::with_token(
                     operator,
@@ -487,13 +523,18 @@ impl Interpreter {
                 ))
             }
         };
-        Ok(Value::Boolean(pred(ord)))
+        Ok(Rc::new(Value::Boolean(pred(ord))))
     }
 
-    fn eval_plus(&self, left: Value, right: Value, operator: &Token) -> ExprEvalResult {
-        match (left, right) {
-            (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
-            (Value::String(l), Value::String(r)) => Ok(Value::String(l + &r)),
+    fn eval_plus(
+        &self,
+        left: Rc<Value>,
+        right: Rc<Value>,
+        operator: &Token<'src>,
+    ) -> ExprEvalResult<'src> {
+        match (&*left, &*right) {
+            (Value::Number(l), Value::Number(r)) => Ok(Rc::new(Value::Number(l + r))),
+            (Value::String(l), Value::String(r)) => Ok(Rc::new(Value::String(l.to_owned() + r))),
             _ => Err(RuntimeError::with_token(
                 operator,
                 "Expected two numbers or two strings for '+' operator",
@@ -501,35 +542,47 @@ impl Interpreter {
         }
     }
 
-    fn expect_number(&self, value: Value, operator: &Token) -> Result<f64, RuntimeError> {
-        value.as_number().ok_or(RuntimeError::with_token(
-            operator,
-            "Operand must be a number",
-        ))
+    fn expect_number(
+        &self,
+        value: &Rc<Value>,
+        op: &Token<'src>,
+    ) -> Result<f64, RuntimeError<'src>> {
+        match &**value {
+            Value::Number(n) => Ok(*n),
+            _ => Err(RuntimeError::with_token(op, "Operand must be a number")),
+        }
     }
 
-    fn expect_integer(&self, value: Value, token: &Token) -> Result<i64, RuntimeError> {
+    fn expect_integer(
+        &self,
+        value: Rc<Value>,
+        token: &Token<'src>,
+    ) -> Result<i64, RuntimeError<'src>> {
         value
             .as_integer()
             .ok_or_else(|| RuntimeError::with_token(token, "Expected integer."))
     }
 
-    fn expect_bool(&self, value: Value, operator: &Token) -> Result<bool, RuntimeError> {
+    fn expect_bool(
+        &self,
+        value: Rc<Value>,
+        operator: &Token<'src>,
+    ) -> Result<bool, RuntimeError<'src>> {
         value.as_bool().ok_or(RuntimeError::with_token(
             operator,
             "Operand must be a boolean",
         ))
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> ExprEvalResult {
+    fn evaluate(&mut self, expr: &Expr<'src>) -> ExprEvalResult<'src> {
         expr.accept(self)
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> StmtEvalResult {
+    fn execute(&mut self, stmt: &Stmt<'src>) -> StmtEvalResult<'src> {
         stmt.accept(self)
     }
 
-    fn execute_statements(&mut self, stmts: &[Stmt]) -> StmtEvalResult {
+    fn execute_statements(&mut self, stmts: &[Stmt<'src>]) -> StmtEvalResult<'src> {
         let mut final_flow = ExecutionFlow::Normal;
         for stmt in stmts {
             match self.execute(stmt)? {
@@ -550,7 +603,7 @@ mod tests {
     use super::*;
     use crate::frontend::{parser::Parser, scanner::Scanner};
 
-    fn eval(src: &str, var: &str) -> Result<Value, RuntimeError> {
+    fn eval<'src>(src: &'src str, var: &'src str) -> Result<Rc<Value<'src>>, RuntimeError<'src>> {
         let (toks, _) = Scanner::scan(src);
         let (stmts, _) = Parser::parse(toks);
 
@@ -558,43 +611,43 @@ mod tests {
         for stmt in stmts {
             interp.execute(&stmt)?;
         }
-        let tok = Token::new(TokenType::Identifier, var.to_string(), None, 0);
+
+        let tok = Token::new(TokenType::Identifier, var, None, 0);
         let env = interp.environment.borrow();
         Ok(env.get(&tok).unwrap())
     }
 
     #[test]
     fn basic_expression_evaluation() {
-        let cases: &[(&str, Value)] = &[
-            ("1 + 2", Value::Number(3.0)),
-            ("\"ab\" + \"cd\"", Value::String("abcd".into())),
-            ("5 * (3 + 4) % 3", Value::Number(2.0)),
-            ("!false", Value::Boolean(true)),
+        let cases = [
+            ("x = 1 + 2;", Value::Number(3.0)),
+            ("x = \"ab\" + \"cd\";", Value::String("abcd".into())),
+            ("x = 5 * (3 + 4) % 3;", Value::Number(2.0)),
+            ("x = !false;", Value::Boolean(true)),
         ];
 
         for (expr, expected) in cases {
-            let src = format!("x = {};;", expr);
-            let got = eval(&src, "x").unwrap();
-            assert_eq!(got, *expected, "evaluating `{}`", expr);
+            let got = eval(expr, "x").unwrap();
+            assert_eq!(*got, expected, "evaluating `{}`", expr);
         }
     }
 
     #[test]
     fn logical_and_evaluation() {
         assert_eq!(
-            eval("x = true and true;", "x").unwrap(),
+            *eval("x = true and true;", "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval("x = true and false;", "x").unwrap(),
+            *eval("x = true and false;", "x").unwrap(),
             Value::Boolean(false)
         );
         assert_eq!(
-            eval("x = false and true;", "x").unwrap(),
+            *eval("x = false and true;", "x").unwrap(),
             Value::Boolean(false)
         );
         assert_eq!(
-            eval("x = false and false;", "x").unwrap(),
+            *eval("x = false and false;", "x").unwrap(),
             Value::Boolean(false)
         );
     }
@@ -602,19 +655,19 @@ mod tests {
     #[test]
     fn logical_or_evaluation() {
         assert_eq!(
-            eval("x = true or true;", "x").unwrap(),
+            *eval("x = true or true;", "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval("x = true or false;", "x").unwrap(),
+            *eval("x = true or false;", "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval("x = false or true;", "x").unwrap(),
+            *eval("x = false or true;", "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval("x = false or false;", "x").unwrap(),
+            *eval("x = false or false;", "x").unwrap(),
             Value::Boolean(false)
         );
     }
@@ -622,11 +675,11 @@ mod tests {
     #[test]
     fn logical_precedence() {
         assert_eq!(
-            eval("x = false or true and false;", "x").unwrap(),
+            *eval("x = false or true and false;", "x").unwrap(),
             Value::Boolean(false)
         );
         assert_eq!(
-            eval("x = true and false or true;", "x").unwrap(),
+            *eval("x = true and false or true;", "x").unwrap(),
             Value::Boolean(true)
         );
     }
@@ -634,10 +687,10 @@ mod tests {
     #[test]
     fn logical_short_circuit_does_not_evaluate_rhs() {
         let a = eval("x = false and undefinedVar;", "x").unwrap();
-        assert_eq!(a, Value::Boolean(false));
+        assert_eq!(*a, Value::Boolean(false));
 
         let b = eval("x = true or undefinedVar;", "x").unwrap();
-        assert_eq!(b, Value::Boolean(true));
+        assert_eq!(*b, Value::Boolean(true));
     }
 
     #[test]
@@ -650,13 +703,13 @@ mod tests {
             }
             z = x;
         "#;
-        assert_eq!(eval(src, "x").unwrap(), Value::Number(2.0));
+        assert_eq!(*eval(src, "x").unwrap(), Value::Number(2.0));
     }
 
     #[test]
     fn if_true_executes_then_branch() {
         assert_eq!(
-            eval("x = 0; if true { x = 1; } else { x = 2; }", "x").unwrap(),
+            *eval("x = 0; if true { x = 1; } else { x = 2; }", "x").unwrap(),
             Value::Number(1.0)
         );
     }
@@ -670,13 +723,13 @@ mod tests {
             else if true  { x = 2; }
             else          { x = 3; }
         "#;
-        assert_eq!(eval(src, "x").unwrap(), Value::Number(2.0));
+        assert_eq!(*eval(src, "x").unwrap(), Value::Number(2.0));
     }
 
     #[test]
     fn else_branch_executes_when_condition_false() {
         assert_eq!(
-            eval("x = 0; if false { x = 1; } else { x = 2; }", "x").unwrap(),
+            *eval("x = 0; if false { x = 1; } else { x = 2; }", "x").unwrap(),
             Value::Number(2.0)
         );
     }
@@ -689,7 +742,7 @@ mod tests {
             counter = counter + 1;
         }
     "#;
-        assert_eq!(eval(src, "counter").unwrap(), Value::Number(3.0));
+        assert_eq!(*eval(src, "counter").unwrap(), Value::Number(3.0));
     }
 
     #[test]
@@ -698,7 +751,7 @@ mod tests {
         i = 0;
         while i > 0 { i = i - 1; }
     "#;
-        assert_eq!(eval(src, "i").unwrap(), Value::Number(0.0));
+        assert_eq!(*eval(src, "i").unwrap(), Value::Number(0.0));
     }
 
     #[test]
@@ -720,7 +773,7 @@ mod tests {
                 sum = sum + i;    // 0+1+2+3+4 = 10
             }
         "#;
-        assert_eq!(eval(src, "sum").unwrap(), Value::Number(10.0));
+        assert_eq!(*eval(src, "sum").unwrap(), Value::Number(10.0));
     }
 
     #[test]
@@ -729,7 +782,7 @@ mod tests {
             fn add(a, b) { return a + b; }
             result = add(2, 3);
         "#;
-        assert_eq!(eval(src, "result").unwrap(), Value::Number(5.0));
+        assert_eq!(*eval(src, "result").unwrap(), Value::Number(5.0));
     }
 
     #[test]
@@ -741,7 +794,7 @@ mod tests {
             }
             eight = fib(6);    // 8
         "#;
-        assert_eq!(eval(src, "eight").unwrap(), Value::Number(8.0));
+        assert_eq!(*eval(src, "eight").unwrap(), Value::Number(8.0));
     }
 
     #[test]
@@ -773,12 +826,12 @@ mod tests {
             another_function(outer_shadow_var);
         "#;
         assert_eq!(
-            eval(explicit_shadow_src, "global_val").unwrap(),
+            *eval(explicit_shadow_src, "global_val").unwrap(),
             Value::Number(300.0),
             "Global variable modified correctly from within a function that has shadowed parameters."
         );
         assert_eq!(
-            eval(explicit_shadow_src, "outer_shadow_var").unwrap(),
+            *eval(explicit_shadow_src, "outer_shadow_var").unwrap(),
             Value::Number(50.0),
             "Outer variable should not be affected by assignment to a shadowed parameter in a different function."
         );
@@ -788,7 +841,7 @@ mod tests {
     fn test_struct_declaration_and_instantiation_empty() {
         let src = "struct T {} x = T {};";
         let val = eval(src, "x").unwrap();
-        match val {
+        match &*val {
             Value::StructInstance(inst_rc) => {
                 assert_eq!(inst_rc.borrow().struct_decl.name, "T");
             }
@@ -806,8 +859,8 @@ mod tests {
             p.x = 5;
             val_y = p.y;
         "#;
-        assert_eq!(eval(src, "val_x").unwrap(), Value::Number(1.0));
-        assert_eq!(eval(src, "val_y").unwrap(), Value::Number(3.0));
+        assert_eq!(*eval(src, "val_x").unwrap(), Value::Number(1.0));
+        assert_eq!(*eval(src, "val_y").unwrap(), Value::Number(3.0));
     }
 
     #[test]
@@ -823,7 +876,7 @@ mod tests {
             instance.increment(); // val becomes 12
             result = instance.get();
         "#;
-        assert_eq!(eval(src, "result").unwrap(), Value::Number(12.0));
+        assert_eq!(*eval(src, "result").unwrap(), Value::Number(12.0));
     }
 
     #[test]
@@ -834,7 +887,7 @@ mod tests {
             }
             sum = MathUtils.add(5, 7);
         "#;
-        assert_eq!(eval(src, "sum").unwrap(), Value::Number(12.0));
+        assert_eq!(*eval(src, "sum").unwrap(), Value::Number(12.0));
     }
 
     #[test]
@@ -891,7 +944,9 @@ mod tests {
     #[test]
     fn error_call_non_callable() {
         let err = eval("y=10; x = y();", "x").unwrap_err();
-        assert!(err.message.contains("Can only call functions."));
+        assert!(err
+            .message
+            .contains("Attempted to call a non-callable value"));
     }
 
     #[test]
@@ -915,15 +970,15 @@ mod tests {
     #[test]
     fn string_ordering_works() {
         assert_eq!(
-            eval(r#"x = "a" <  "b";"#, "x").unwrap(),
+            *eval(r#"x = "a" <  "b";"#, "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval(r#"x = "z" >= "y";"#, "x").unwrap(),
+            *eval(r#"x = "z" >= "y";"#, "x").unwrap(),
             Value::Boolean(true)
         );
         assert_eq!(
-            eval(r#"x = "cat" > "car";"#, "x").unwrap(),
+            *eval(r#"x = "cat" > "car";"#, "x").unwrap(),
             Value::Boolean(true)
         );
     }
@@ -944,6 +999,6 @@ mod tests {
             b = Box { f: test };
             res = b.f(3);
         "#;
-        assert_eq!(eval(src, "res").unwrap(), Value::Number(4.0));
+        assert_eq!(*eval(src, "res").unwrap(), Value::Number(4.0));
     }
 }
